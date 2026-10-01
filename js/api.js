@@ -67,10 +67,17 @@ export async function invoke(type, data = {}) {
   const { data: result, error } = await c.functions.invoke("clay", {
     body: { type, ...data },
   });
-  if (error)
+  if (error) {
+    let message;
+    try {
+      message = (await error.context?.json())?.error;
+    } catch {}
     throw Error(
-      "Clay could not finish that request. Please try again shortly.",
+      typeof message === "string"
+        ? message
+        : "Clay could not finish that request. Please try again shortly.",
     );
+  }
   if (result?.error) throw Error(result.error);
   return result;
 }

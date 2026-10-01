@@ -73,6 +73,30 @@ try {
   assert.equal(other.status, 200);
   assert.deepEqual(other.data, []);
   console.log("PASS cross-account read isolation");
+  await request("/rest/v1/generation_jobs", {
+    method: "POST",
+    body: { user_id: users[0].id, status: "running" },
+  });
+  const ownJob = await request("/functions/v1/clay", {
+    method: "POST",
+    body: { type: "generation_status" },
+    token: users[0].token,
+    key: pub,
+  });
+  assert.equal(ownJob.data.job.user_id, users[0].id);
+  const otherJob = await request("/functions/v1/clay", {
+    method: "POST",
+    body: { type: "generation_status" },
+    token: users[1].token,
+    key: pub,
+  });
+  assert.equal(otherJob.data.job, null);
+  const rawJobs = await request("/rest/v1/generation_jobs?select=*", {
+    token: users[1].token,
+    key: pub,
+  });
+  assert.ok(rawJobs.status >= 400);
+  console.log("PASS generation-job ownership and direct table denial");
   const denied = await call(1, "save_website", {
     p_id: site.id,
     p_model: example(),

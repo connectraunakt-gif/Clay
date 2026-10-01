@@ -1,3 +1,4 @@
+import { resolveImages } from "./media.js";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import {
   validate,
@@ -64,8 +65,8 @@ async function hash(s: string) {
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 }
-const schema = `Website model: {name,description,email,phone,address,theme:{background:'#rrggbb',text:'#rrggbb',accent:'#rrggbb',font:'Inter'|'Georgia'|'Arial'|'Trebuchet MS',spacing:'comfortable'|'compact'|'spacious'},navigation:[{pageId,label}],content:[{id,name,description,price}],pages:[{id,title,slug,sections:[{id,type:'hero'|'text'|'services'|'gallery'|'products'|'contact'|'testimonials',layout:'split'|'center'|'grid'|'stack',elements:[{id,type:'heading'|'text'|'image'|'button'|'item',text?,src?,alt?,href?,description?,price?}]}]}]}. Use unique string IDs everywhere; home slug is index. Images must be real secure image URLs or empty placeholders with descriptive alt text. Use only known images.unsplash.com URLs when relevant; never invent URLs. Contact sections render a real form automatically. Product sections render content items automatically. Item elements render service cards. Never invent reviews, awards, addresses, statistics, or business claims. Use tasteful contrast (text/background and white/accent at least 4.5:1), meaningful copy, carefully varied layout and section order, no code or HTML. Only include sections relevant to this business. Honor every user exclusion and exact section count. Use at least one heading in each section. Split hero supports imagery. Gallery/grid supports multiple images or items. Use a meaningful CTA and navigation that references existing pages.`;
-async function ai(system: string, input: unknown) {
+const schema = `Website model: {name,description,email,phone,address,theme:{background:'#rrggbb',text:'#rrggbb',accent:'#rrggbb',font:'Inter'|'Georgia'|'Arial'|'Trebuchet MS',spacing:'comfortable'|'compact'|'spacious'},navigation:[{pageId,label}],content:[{id,name,description,price}],pages:[{id,title,slug,sections:[{id,type:'hero'|'text'|'services'|'gallery'|'products'|'contact'|'testimonials',layout:'split'|'center'|'grid'|'stack',elements:[{id,type:'heading'|'text'|'image'|'button'|'item',text?,src?,alt?,href?,description?,price?}]}]}]}. Use unique string IDs everywhere; home slug is index. For each image include imageQuery: a concise English photo search phrase, and descriptive alt text. Clay resolves imageQuery into a real licensed photo. Do not invent URLs. Use imagery when appropriate; do not present stock imagery as actual products, staff or premises. Contact sections render a real form automatically. Product sections render content items automatically. Item elements render service cards. Never invent reviews, awards, addresses, statistics, or business claims. Use tasteful contrast (text/background and white/accent at least 4.5:1), meaningful copy, carefully varied layout and section order, no code or HTML. Only include sections relevant to this business. Honor every user exclusion and exact section count. Use at least one heading in each section. Split hero supports imagery. Gallery/grid supports multiple images or items. Use a meaningful CTA and navigation that references existing pages.`;
+async function ai(system: string, input: unknown, maxTokens = 4500) {
   if (!env("NVIDIA_API_KEY"))
     throw new Friendly("Clay’s writing service is not connected yet.", 503);
   const r = await fetch(
@@ -77,7 +78,7 @@ async function ai(system: string, input: unknown) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: env("NVIDIA_MODEL") || "nvidia/nemotron-3.5-lightning-30b-a3b",
+        model: env("NVIDIA_MODEL") || "openai/gpt-oss-20b",
         messages: [
           {
             role: "system",
@@ -86,7 +87,7 @@ async function ai(system: string, input: unknown) {
           { role: "user", content: JSON.stringify(input) },
         ],
         temperature: 0.4,
-        max_tokens: 9000,
+        max_tokens: maxTokens,
         stream: false,
         response_format: { type: "json_object" },
         chat_template_kwargs: { enable_thinking: false },
@@ -239,17 +240,15 @@ async function publish(site: any, remove = false) {
         .maybeSingle(),
     );
     await db(
-      admin
-        .from("publications")
-        .upsert({
-          website_id: site.id,
-          repo,
-          commit_sha: commit.sha,
-          pending_revision: remove ? -1 : site.revision,
-          pending_model: remove ? null : site.model,
-          last_good_sha: previous?.last_good_sha || null,
-          started_at: new Date().toISOString(),
-        }),
+      admin.from("publications").upsert({
+        website_id: site.id,
+        repo,
+        commit_sha: commit.sha,
+        pending_revision: remove ? -1 : site.revision,
+        pending_model: remove ? null : site.model,
+        last_good_sha: previous?.last_good_sha || null,
+        started_at: new Date().toISOString(),
+      }),
     );
     await gh(path + "/git/refs/heads/" + branch, "PATCH", {
       sha: commit.sha,
@@ -434,7 +433,8 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await admin.auth.getUser(token);
     if (error || !data.user) throw new Friendly("Please sign in again.", 401);
     const user = data.user;
-    await limit("user:" + user.id, 120, 3600);
+    if (b.type !== "generation_status")
+      await limit("user:" + user.id, 120, 3600);
     if (["questions", "generate", "edit"].includes(b.type))
       await limit("ai:" + user.id, 25, 3600);
     if (b.type === "questions") {
@@ -447,12 +447,142 @@ Deno.serve(async (req: Request) => {
       const result = await ai(
         "You are Clay, a thoughtful website designer for a nontechnical small-business owner. Ask 2–5 short, personalized questions only about details that materially affect this website. Do not ask facts already supplied or technical questions. Include desired outcome, content/sections to exclude, and visual taste if not specified. Return {questions:[{question,options?:[short suggestions]}]}. If all needed information is supplied return an empty questions list.",
         { description: b.description },
+        800,
       );
       if (!Array.isArray(result.questions) || result.questions.length > 5)
         throw new Friendly(
           "Clay could not prepare your questions. Please try again.",
         );
       return reply(result, origin);
+    }
+    if (b.type === "generation_status") {
+      const job = await db(
+        admin
+          .from("generation_jobs")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      );
+      if (
+        job?.status === "running" &&
+        Date.now() - Date.parse(job.created_at) > 180000
+      ) {
+        await db(
+          admin
+            .from("generation_jobs")
+            .update({
+              status: "failed",
+              message:
+                "Clay took too long to respond. Please retry; your answers are still here.",
+            })
+            .eq("id", job.id)
+            .eq("status", "running"),
+        );
+        job.status = "failed";
+        job.message =
+          "Clay took too long to respond. Please retry; your answers are still here.";
+      }
+      return reply(
+        {
+          job,
+          site:
+            job?.status === "complete" && job.website_id
+              ? await owned(job.website_id, user.id)
+              : null,
+        },
+        origin,
+      );
+    }
+    if (b.type === "generation_start") {
+      if (
+        typeof b.description !== "string" ||
+        b.description.length < 5 ||
+        b.description.length > 5000 ||
+        !Array.isArray(b.answers) ||
+        b.answers.length > 5 ||
+        JSON.stringify(b.answers).length > 20000
+      )
+        throw new Friendly("Please complete your business description.");
+      const existing = await db(
+        admin
+          .from("websites")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      );
+      if (existing)
+        throw new Friendly(
+          "Your account already has a website. Open it from Home.",
+          409,
+        );
+      const active = await db(
+        admin
+          .from("generation_jobs")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("status", "running")
+          .maybeSingle(),
+      );
+      if (active) return reply({ job: active }, origin);
+      await limit("ai:" + user.id, 25, 3600);
+      const job = await db(
+        admin
+          .from("generation_jobs")
+          .insert({ user_id: user.id })
+          .select("*")
+          .single(),
+      );
+      const work = async () => {
+        try {
+          const r = await ai(
+            "Create a complete bespoke website. Return {model: WebsiteModel}. Use concise copy and economical JSON. " +
+              schema,
+            { description: b.description, answers: b.answers },
+          );
+          await resolveImages(r.model);
+          const model = prepareGeneratedModel(r.model);
+          const current = await db(
+            admin
+              .from("generation_jobs")
+              .select("status")
+              .eq("id", job.id)
+              .single(),
+          );
+          if (current.status !== "running") return;
+          const site = await db(
+            admin
+              .from("websites")
+              .insert({ user_id: user.id, model })
+              .select("id")
+              .single(),
+          );
+          await db(
+            admin
+              .from("generation_jobs")
+              .update({ status: "complete", website_id: site.id })
+              .eq("id", job.id),
+          );
+        } catch (e) {
+          console.error(
+            "Generation failed",
+            job.id,
+            e instanceof Error ? e.name : "unknown",
+          );
+          const message =
+            e instanceof Friendly
+              ? e.message
+              : "Clay couldn’t finish this website. Your answers are saved. Retry, or start with a blank website.";
+          await admin
+            .from("generation_jobs")
+            .update({ status: "failed", message })
+            .eq("id", job.id)
+            .eq("status", "running");
+        }
+      };
+      EdgeRuntime.waitUntil(work());
+      return reply({ job }, origin);
     }
     if (b.type === "generate") {
       if (
@@ -467,6 +597,7 @@ Deno.serve(async (req: Request) => {
           schema,
         { description: b.description, answers: b.answers },
       );
+      await resolveImages(r.model);
       r.model = prepareGeneratedModel(r.model);
       return reply(r, origin);
     }
@@ -475,16 +606,18 @@ Deno.serve(async (req: Request) => {
       if (typeof b.prompt !== "string" || b.prompt.length > 4000)
         throw new Friendly("Please describe the change you want.");
       const r = await ai(
-        `You edit websites using precise structured operations. Never replace the whole website for a small change. Attach changes to selected element/section when relevant, unless user requests global changes. If vague or potentially destructive ask one brief question with {question:string}. Otherwise return {summary:string,operations:[...]}. Allowed operations: create_page {value:page}; delete_page {target:pageId}; create_section {pageId,index?,value:section}; delete_section {target:sectionId}; update_section {target:sectionId,value:{layout?,background?}}; move_section {target:sectionId,pageId?,index}; move_element {target:elementId,sectionId,index}; edit_text {target:elementId,value:string}; replace_image {target:elementId,value:{src,alt}}; change_colors {target?:sectionId,value:{background?,text?,accent?}}; change_typography {value:font}; change_spacing {value:spacing}; update_navigation {value:[{pageId,label}]}; create_content {value:{id,name,description,price}}; update_content {target:contentId,value:{name?,description?,price?}}; delete_content {target:contentId}; update_element {target:elementId,value:{text?,href?,description?,price?}}; create_element {target:sectionId,value:element}; delete_element {target:elementId}; update_info {value:{name?,description?,email?,phone?,address?}}; publish_website {} only if explicitly asked to publish. Every operation has a type field. Do not expose any of these technical names to the user. ${schema}`,
+        `You edit websites using precise structured operations. Never replace the whole website for a small change. Attach changes to selected element/section when relevant, unless user requests global changes. If vague or potentially destructive ask one brief question with {question:string}. Otherwise return {summary:string,operations:[...]}. Allowed operations: create_page {value:page}; delete_page {target:pageId}; create_section {pageId,index?,value:section}; delete_section {target:sectionId}; update_section {target:sectionId,value:{layout?,background?}}; move_section {target:sectionId,pageId?,index}; move_element {target:elementId,sectionId,index}; edit_text {target:elementId,value:string}; replace_image {target:elementId,value:{imageQuery,alt}}; change_colors {target?:sectionId,value:{background?,text?,accent?}}; change_typography {value:font}; change_spacing {value:spacing}; update_navigation {value:[{pageId,label}]}; create_content {value:{id,name,description,price}}; update_content {target:contentId,value:{name?,description?,price?}}; delete_content {target:contentId}; update_element {target:elementId,value:{text?,href?,description?,price?}}; create_element {target:sectionId,value:element}; delete_element {target:elementId}; update_info {value:{name?,description?,email?,phone?,address?}}; publish_website {} only if explicitly asked to publish. When adding photos to a section without images, use create_element with type image and imageQuery; do not ask the user for a URL. Every operation has a type field. Do not expose any of these technical names to the user. ${schema}`,
         {
           website: site.model,
           pageId: b.pageId,
           selected: b.selected,
           instruction: b.prompt,
         },
+        2200,
       );
       if (r.question)
         return reply({ question: String(r.question).slice(0, 1000) }, origin);
+      await resolveImages(r.operations);
       applyOperations(
         site.model,
         r.operations.filter((o: any) => o.type !== "publish_website"),
@@ -508,9 +641,14 @@ Deno.serve(async (req: Request) => {
     return reply(
       {
         error:
-          e instanceof Friendly
+          e instanceof Error && /Photo search|No suitable photo/.test(e.message)
             ? e.message
-            : "Clay could not finish that change. Please try again.",
+            : e instanceof Error &&
+                (e.name === "TimeoutError" || e.name === "AbortError")
+              ? "Clay took too long to respond. Your work is safe. Please try again."
+              : e instanceof Friendly
+                ? e.message
+                : "Clay could not finish that change. Please try again.",
       },
       origin,
       e instanceof Friendly ? e.status : 500,

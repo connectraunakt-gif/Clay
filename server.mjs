@@ -7,6 +7,7 @@ const root = resolve("."),
     ".js": "text/javascript",
     ".css": "text/css",
     ".png": "image/png",
+    ".mp4": "video/mp4",
     ".svg": "image/svg+xml",
     ".webmanifest": "application/manifest+json",
   };
@@ -17,7 +18,7 @@ createServer(async (req, res) => {
     const file = resolve(root, "." + p);
     if (
       !file.startsWith(root + sep) ||
-      ![".html", ".js", ".css", ".png", ".svg", ".webmanifest"].includes(
+      ![".html", ".js", ".css", ".png", ".svg", ".webmanifest", ".mp4"].includes(
         extname(file),
       ) ||
       p.includes("supabase/")

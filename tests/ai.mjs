@@ -67,12 +67,28 @@ try {
     answer:
       "Use warm earthy colours, natural wood imagery, and a simple elegant layout. Our contact email is hello@example.com. Our item is Oak Dining Table, priced at ₹45,000. Keep exactly four sections and no testimonials.",
   }));
-  const generated = await call(
+  const started = await call(
     "/functions/v1/clay",
-    { type: "generate", description, answers },
+    { type: "generation_start", description, answers },
     token,
     pub,
   );
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  let result;
+  for (let i = 0; i < 80; i++) {
+    result = await call(
+      "/functions/v1/clay",
+      { type: "generation_status" },
+      token,
+      pub,
+    );
+    if (result.data.site || result.data.job?.status === "failed") break;
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  const generated = {
+    status: result.data.site ? 200 : 500,
+    data: { model: result.data.site?.model, message: result.data.job?.message },
+  };
   console.log("Generation response", generated.status);
   assert.equal(generated.status, 200, JSON.stringify(generated.data));
   validate(generated.data.model);
@@ -87,14 +103,7 @@ try {
     ".playwright/ai-generated.json",
     JSON.stringify(generated.data.model, null, 2),
   );
-  const created = await call(
-    "/rest/v1/rpc/create_website",
-    { p_model: generated.data.model },
-    token,
-    pub,
-  );
-  assert.equal(created.status, 200);
-  const site = created.data;
+  const site = result.data.site;
   const target = site.model.pages[0].sections[0].elements.find(
     (e) => e.type === "heading",
   );
@@ -120,6 +129,33 @@ try {
   const revised = applyOperations(site.model, edit.data.operations);
   assert.notEqual(locate(revised, target.id).node.text, target.text);
   console.log("PASS real selection-aware AI edit");
+  const photo = await call(
+    "/functions/v1/clay",
+    {
+      type: "edit",
+      siteId: site.id,
+      pageId: site.model.pages[0].id,
+      selected: site.model.pages[0].sections[0].id,
+      prompt:
+        "Add a photo of wooden furniture to this hero section. Keep all existing text.",
+    },
+    token,
+    pub,
+  );
+  assert.equal(photo.status, 200, JSON.stringify(photo.data));
+  const withPhoto = applyOperations(site.model, photo.data.operations);
+  const images = withPhoto.pages
+    .flatMap((p) => p.sections)
+    .flatMap((s) => s.elements)
+    .filter((e) => e.type === "image");
+  assert.ok(
+    images.some(
+      (e) =>
+        /^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(e.src || "") &&
+        e.credit,
+    ),
+  );
+  console.log("PASS real AI image lookup and editing");
 } catch (e) {
   console.error(e);
   process.exitCode = 1;

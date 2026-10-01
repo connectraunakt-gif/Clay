@@ -32,6 +32,7 @@ const state = {
   answers: [],
   description: "",
   question: 0,
+  messages: [],
 };
 const icons = {
   arrow: "↗",
@@ -68,12 +69,16 @@ function header(active = "") {
   return `<header class="app-header">${logo()}${state.user || state.demo ? `<nav aria-label="Main navigation">${["Home", "Website", "Profile"].map((n) => btn(n.toLowerCase(), n, active === n.toLowerCase() ? "active" : "")).join("")}</nav>` : '<span class="header-note">A little idea. A whole new beginning.</span>'}<div class="header-end">${btn("theme", icon("moon"), "icon-button", 'aria-label="Switch colour theme"')}${state.user ? btn("profile", esc((state.user.user_metadata?.name || state.user.email || "You").slice(0, 1).toUpperCase()), "avatar") : state.demo ? '<span class="demo-label">Example workspace</span>' : btn("login", "Log in", "text-button")}</div></header>`;
 }
 function landing() {
+  state.description = "";
+  state.answers = [];
+  state.questions = [];
+  state.messages = [];
   state.demo = false;
   state.site = null;
   state.sites = [];
   app.innerHTML =
     header() +
-    `<main id="main" class="landing"><section class="welcome"><div class="welcome-copy"><p class="eyebrow"><span class="tiny-mark">✳</span> BIG IDEAS START SMALL</p><h1>Your business<br>deserves a<br><em>digital home.</em></h1><p class="lede">Create, customize, and grow your website<br class="desktop-only"> without the technical complexity.</p>${btn("signup", "Create my website " + icon("arrow"), "primary large")}<p class="under-cta">Your ideas. Your website. Entirely yours.</p></div><div class="showcase" aria-label="Example website designs"><div class="orbit-label"><span></span> A space for every kind of business</div><div class="sample-window"><div class="browser-bar"><i></i><i></i><i></i><span>Made with Clay</span></div><div class="sample-interior"><div class="sample-nav"><b>forma<span>®</span></b><span>Our story &nbsp; Collection &nbsp; Contact</span></div><div class="sample-hero"><div><p class="small-caps">THOUGHTFULLY MADE</p><h2>Less, but<br>with meaning.</h2><p>Honest materials. Quiet details.<br>Furniture for a life well lived.</p><span class="sample-button">Discover the collection ↗</span></div><img src="https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=900&q=85" alt="Natural wood shelving in a thoughtfully designed interior"></div><div class="sample-bottom">Made slowly. &nbsp; Loved for a lifetime. <span>01 — 03</span></div></div></div><div class="floating-sample"><div class="floral-photo"></div><div><span class="small-caps">THE EVERYDAY, IN BLOOM</span><h3>Wild & wonderful.</h3><span>Flowers with a little more feeling.</span></div></div><div class="made-note"><span>✳</span> Built around you, by Clay.</div></div></section><section class="landing-bottom"><div><span class="step-no">01</span><h2>Tell us your story.</h2><p>You know your business.<br>That’s all you need to bring.</p></div><div><span class="step-no">02</span><h2>Make it your own.</h2><p>Ask for a change or make it yourself.<br>Every detail is in your hands.</p></div><div><span class="step-no">03</span><h2>Open your doors.</h2><p>One place to create, publish,<br>and grow your presence.</p></div><div class="try-editor">Curious how it feels?${btn("demo", "Explore the editor " + icon("arrow"), "text-button")}</div></section></main><footer class="landing-footer"><span>Built for real people. And their businesses.</span><span>Meet your next chapter.</span></footer>`;
+    `<main id="main" class="landing"><section class="welcome"><div class="welcome-copy"><p class="eyebrow">BIG IDEAS START SMALL</p><h1>Your business<br>deserves a<br><em>digital home.</em></h1><p class="lede">Create, customize, and grow your website<br class="desktop-only"> without the technical complexity.</p><div class="landing-ctas">${btn("signup", "Create my website " + icon("arrow"), "primary large")}${btn("demo", "Explore Clay", "outline large")}</div><p class="under-cta">Your ideas. Your website. Entirely yours.</p></div><div class="showcase" aria-label="Example website designs"><div class="orbit-label"><span></span> A space for every kind of business</div><div class="sample-window"><div class="browser-bar"><i></i><i></i><i></i><span>Made with Clay</span></div><div class="sample-interior"><div class="sample-nav"><b>forma<span>®</span></b><span>Our story &nbsp; Collection &nbsp; Contact</span></div><div class="sample-hero"><div><p class="small-caps">THOUGHTFULLY MADE</p><h2>Less, but<br>with meaning.</h2><p>Honest materials. Quiet details.<br>Furniture for a life well lived.</p><span class="sample-button">Discover the collection ↗</span></div><img src="https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=900&q=85" alt="Natural wood shelving in a thoughtfully designed interior"></div><div class="sample-bottom">Made slowly. &nbsp; Loved for a lifetime. <span>01 — 03</span></div></div></div><div class="floating-sample"><div class="floral-photo"></div><div><span class="small-caps">THE EVERYDAY, IN BLOOM</span><h3>Wild & wonderful.</h3><span>Flowers with a little more feeling.</span></div></div><div class="made-note">Built around you, by Clay.</div><div class="showcase-dots" aria-label="Example websites">${["Furniture", "Flowers", "Photography"].map((name, i) => btn("showcase", `<span class="sr-only">${name} example</span>`, i === 0 ? "active" : "", `data-index="${i}" aria-pressed="${i === 0}"`)).join("")}</div></div></section><section class="landing-bottom"><div><span class="step-no">01</span><h2>Tell us your story.</h2><p>You know your business.<br>That’s all you need to bring.</p></div><div><span class="step-no">02</span><h2>Make it your own.</h2><p>Ask for a change or make it yourself.<br>Every detail is in your hands.</p></div><div><span class="step-no">03</span><h2>Open your doors.</h2><p>One place to create, publish,<br>and grow your presence.</p></div><div class="try-editor">Curious how it feels?${btn("demo", "Explore the editor " + icon("arrow"), "text-button")}</div></section></main><footer class="landing-footer"><span>Built for real people. And their businesses.</span><span>Meet your next chapter.</span></footer>`;
   if (
     !sessionStorage.getItem("clay-intro") &&
     !matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -83,17 +88,23 @@ function landing() {
 function splash() {
   sessionStorage.setItem("clay-intro", "1");
   const el = document.createElement("div");
-  el.className = "splash";
-  el.setAttribute("aria-hidden", "true");
-  el.innerHTML = `<div class="building"><svg class="stickman" viewBox="0 0 120 160"><circle cx="52" cy="27" r="13"/><path d="M52 40v54m0-38 30 14 18-22M52 57 25 81m27 13-25 45m25-45 30 45"/></svg><div class="blocks">${Array.from({ length: 9 }, (_, i) => `<i style="--i:${i}"></i>`).join("")}</div></div><img class="splash-logo" src="assets/logo.png" alt="">`;
+  el.className = "splash video-intro";
+  el.innerHTML =
+    '<video autoplay muted playsinline aria-label="A figure builds nine blocks, then reveals the Clay logo"><source src="assets/clay-intro.mp4" type="video/mp4"></video><button class="outline intro-skip">Skip intro</button>';
   document.body.append(el);
-  setTimeout(() => el.remove(), 3400);
+  const close = () => el.remove();
+  el.querySelector("button").onclick = close;
+  const video = el.querySelector("video");
+  video.onended = close;
+  video.onerror = close;
+  video.play().catch(close);
+  setTimeout(close, 8500);
 }
 function auth(signup = true) {
   state.signup = signup;
   app.innerHTML =
     header() +
-    `<main id="main" class="auth-layout"><div class="auth-art"><p class="eyebrow">YOUR NEXT CHAPTER</p><h1>Something great<br>is taking shape.</h1><div class="abstract-blocks"><i></i><i></i><i></i><i></i></div><p>A home for your business.<br>A little more room to grow.</p></div><section class="auth-form">${logo()}<h1>${signup ? "Let’s make it yours." : "Welcome home."}</h1><p>${signup ? "Your business has a story. Let’s give it a home." : "Pick up right where you left off."}</p>${btn("google", '<span class="google-g" aria-hidden="true">G</span>Continue with Google', "outline full")}<div class="divider"><span>or</span></div><form id="email-form"><label for="email">Email address</label><input id="email" type="email" name="email" autocomplete="email" placeholder="you@yourbusiness.com" required><button class="primary full">Continue with email ${icon("arrow")}</button></form><p id="auth-status" role="status" class="form-status"></p><p class="auth-switch">${signup ? "Already have an account?" : "New to Clay?"} ${btn(signup ? "login" : "signup", signup ? "Log in" : "Create an account", "text-button")}</p><small>We’ll send you a secure sign-in link.<br>No password to remember.</small></section></main>`;
+    `<main id="main" class="auth-layout"><div class="auth-art"><p class="eyebrow">YOUR NEXT CHAPTER</p><h1>Something great<br>is taking shape.</h1><div class="auth-example"><div class="browser-bar"><i></i><i></i><i></i><span>A website made with Clay</span></div><img src="https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=900&q=85" alt="Interior design website inspiration"><div><span class="small-caps">FORMA — FURNITURE STUDIO</span><h2>Less, but with meaning.</h2></div></div><p>A home for your business.<br>A little more room to grow.</p></div><section class="auth-form">${logo()}<h1>${signup ? "Let’s make it yours." : "Welcome home."}</h1><p>${signup ? "Your business has a story. Let’s give it a home." : "Pick up right where you left off."}</p>${btn("google", '<span class="google-g" aria-hidden="true">G</span>Continue with Google', "outline full")}<div class="divider"><span>or</span></div><form id="email-form"><label for="email">Email address</label><input id="email" type="email" name="email" autocomplete="email" placeholder="you@yourbusiness.com" required><button class="primary full">Continue with email ${icon("arrow")}</button></form><p id="auth-status" role="status" class="form-status"></p><p class="auth-switch">${signup ? "Already have an account?" : "New to Clay?"} ${btn(signup ? "login" : "signup", signup ? "Log in" : "Create an account", "text-button")}</p><small>We’ll send you a secure sign-in link.<br>No password to remember.</small></section></main>`;
   $("#email-form").onsubmit = async (e) => {
     e.preventDefault();
     await busy(e.submitter, async () => {
@@ -105,9 +116,25 @@ function auth(signup = true) {
 }
 function home() {
   state.preview = false;
+  try {
+    const saved = JSON.parse(
+      sessionStorage.getItem("clay-brief-" + state.user?.id) || "null",
+    );
+    if (saved)
+      Object.assign(state, {
+        description: saved.description,
+        answers: saved.answers,
+      });
+  } catch {}
   app.innerHTML =
     header("home") +
-    `<main id="main" class="home"><section class="home-start"><div class="home-wordmark">${logo()}</div><p class="eyebrow">LET’S MAKE SOMETHING THAT’S YOURS</p><h1>Tell us about your business.</h1><p>Start with what you do. We’ll take it from there.</p><form id="business-form" class="prompt-box"><label class="sr-only" for="business">Describe your business</label><textarea id="business" name="business" maxlength="5000" placeholder="I run a small business called…" required></textarea><div><span>A few words are all it takes.</span><button class="send" aria-label="Start creating">${icon("send")}</button></div></form><div class="home-hints"><span>Make it personal.</span><span>Make it professional.</span><span>Make it yours.</span></div><p class="plan-note">Your account includes one website, with all features.</p></section><section class="your-sites"><div class="section-heading"><h2>Your digital home</h2><span>${state.sites.length} of 1 website</span></div>${siteList()}</section></main>`;
+    `<main id="main" class="home"><aside class="home-sidebar"><p class="eyebrow">YOUR SPACE</p>${btn("home", "Overview", "sidebar-link active")}${btn("website", "Your website", "sidebar-link")}${btn("profile", "Activity & messages", "sidebar-link")}${btn("settings", "Settings", "sidebar-link")}<p class="plan-note">One website.<br>Everything you need.</p></aside><section class="home-start"><div class="home-wordmark">${logo()}</div><p class="eyebrow">LET’S MAKE SOMETHING THAT’S YOURS</p><h1>Tell us about your business.</h1><p>Start with what you do. We’ll take it from there.</p><form id="business-form" class="prompt-box"><label class="sr-only" for="business">Describe your business</label><textarea id="business" name="business" maxlength="5000" placeholder="I run a small business called…" required></textarea><div><span>A few words are all it takes.</span><button class="send" aria-label="Start creating">${icon("send")}</button></div></form><div class="home-shortcuts">${btn("website", "Edit website", "outline")}${btn("profile", "View activity", "outline")}${btn("settings", "Your settings", "outline")}${btn("blank-site", "Start manually", "outline")}</div><div class="home-hints"><span>Make it personal.</span><span>Make it professional.</span><span>Make it yours.</span></div><p class="plan-note">Your account includes one website, with all features.</p></section><section class="your-sites"><div class="section-heading"><h2>Your digital home</h2><span>${state.sites.length} of 1 website</span></div>${siteList()}</section></main>`;
+  $("#business").value = state.description;
+  if (!state.sites.length && state.description)
+    $(".home-start").insertAdjacentHTML(
+      "beforeend",
+      btn("resume-generation", "Resume website creation", "text-button"),
+    );
   $("#business-form").onsubmit = async (e) => {
     e.preventDefault();
     if (state.sites.length) {
@@ -118,6 +145,7 @@ function home() {
       return;
     }
     state.description = $("#business").value;
+    saveBrief();
     await busy(e.submitter, async () => {
       const result = await api.invoke("questions", {
         description: state.description,
@@ -157,22 +185,107 @@ function question() {
     else await busy(e.submitter, generate);
   };
 }
-async function generate() {
+function saveBrief() {
+  if (state.user)
+    sessionStorage.setItem(
+      "clay-brief-" + state.user.id,
+      JSON.stringify({
+        description: state.description,
+        answers: state.answers,
+      }),
+    );
+}
+function generationFailure(message) {
+  app.innerHTML =
+    header("home") +
+    '<main id="main" class="question-view"><p class="eyebrow">YOUR IDEAS ARE SAFE</p><h1>Let’s pick up from here.</h1><p>' +
+    esc(message) +
+    '</p><div class="recovery-actions">' +
+    btn("retry-generation", "Try again", "primary") +
+    btn("blank-site", "Start with a blank website", "outline") +
+    btn("home", "Back to Home", "text-button") +
+    "</div></main>";
+}
+async function generate(resume = false) {
+  saveBrief();
   app.innerHTML =
     header("website") +
-    `<main id="main" class="generation"><span class="clay-spinner">✳</span><h1>I’ve got everything I need.<br>Let’s build it.</h1><p>Finding the right words, colours, and a space that feels like you.</p><div class="building-preview"><div></div><div></div><div></div></div></main>`;
+    '<main id="main" class="generation"><span class="progress-line" aria-hidden="true"></span><h1>I’ve got everything I need.<br>Let’s build it.</h1><p>Finding the right words, colours, and a space that feels like you.</p><div class="building-preview"><div></div><div></div><div></div></div><p role="status" id="generation-status">Your website is taking shape. You can return here if you leave.</p>' +
+    btn("home", "Back to Home", "text-button") +
+    "</main>";
   try {
-    const r = await api.invoke("generate", {
-      description: state.description,
-      answers: state.answers,
-    });
-    const site = await api.createSite(r.model);
-    state.sites = [site];
-    openSite(site, true);
+    if (!resume)
+      await api.invoke("generation_start", {
+        description: state.description,
+        answers: state.answers,
+      });
+    for (let i = 0; i < 100; i++) {
+      const r = await api.invoke("generation_status");
+      if (r.site) {
+        state.sites = [r.site];
+        sessionStorage.removeItem("clay-brief-" + state.user.id);
+        if ($("#generation-status")) openSite(r.site, true);
+        return;
+      }
+      if (!r.job || r.job.status === "failed")
+        throw Error(
+          r.job?.message || "Please try creating your website again.",
+        );
+      if (!$("#generation-status")) return;
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+    throw Error(
+      "This is taking longer than expected. Return to Home and resume your website in a moment.",
+    );
   } catch (e) {
-    home();
-    toast(errorText(e));
+    if ($("#generation-status")) generationFailure(errorText(e));
   }
+}
+async function blankSite() {
+  if (state.sites.length) return openSite(state.sites[0]);
+  const id = uid(),
+    section = uid();
+  const model = {
+    name: "My business",
+    description: state.description || "",
+    email: "",
+    phone: "",
+    address: "",
+    theme: {
+      background: "#f7f5f0",
+      text: "#202a32",
+      accent: "#344c5e",
+      font: "Inter",
+      spacing: "comfortable",
+    },
+    navigation: [{ pageId: id, label: "Home" }],
+    content: [],
+    pages: [
+      {
+        id,
+        title: "Home",
+        slug: "index",
+        sections: [
+          {
+            id: section,
+            type: "hero",
+            layout: "center",
+            elements: [
+              { id: uid(), type: "heading", text: "A home for your business." },
+              {
+                id: uid(),
+                type: "text",
+                text: "Select this text to tell your story, or ask Clay for a change.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const site = await api.createSite(model);
+  state.sites = [site];
+  openSite(site);
 }
 function statusLabel(s = state.site) {
   if (state.demo) return "Example · changes stay in this session";
@@ -192,6 +305,7 @@ function openSite(site, progressive = false) {
   state.selected = null;
   state.undo = [];
   state.redo = [];
+  state.messages = [];
   workspace(progressive);
 }
 function workspace(progressive = false) {
@@ -203,7 +317,7 @@ function workspace(progressive = false) {
   const m = state.site.model;
   app.innerHTML =
     header("website") +
-    `<main id="main" class="workspace ${state.preview ? "previewing" : ""}"><div class="workspace-bar"><div class="website-title">${btn("pages", esc(m.name) + " <span>⌄</span>", "text-button")}<span id="save-status">${statusLabel()}</span></div><div class="device-controls" aria-label="Preview size">${btn("desktop", icon("desktop"), "icon-button " + (state.device === "desktop" ? "active" : ""), 'aria-label="Desktop preview"')}${btn("mobile", icon("mobile"), "icon-button " + (state.device === "mobile" ? "active" : ""), 'aria-label="Mobile preview"')}</div><div class="workspace-actions">${btn("history", "Previous versions", "text-button")}${btn("preview", state.preview ? "Back to editing" : "Preview", "outline")}${btn("publish", "Publish " + icon("arrow"), "primary")}</div></div><div class="canvas-surround"><div class="canvas-top"><div><span id="page-name">${esc(m.pages.find((p) => p.id === state.page)?.title || "Home")}</span><span> / </span>${btn("pages", "Pages", "text-button")}</div><div>${btn("undo", icon("undo"), "icon-button", 'aria-label="Undo" ' + (!state.undo.length ? "disabled" : ""))}${btn("redo", icon("redo"), "icon-button", 'aria-label="Redo" ' + (!state.redo.length ? "disabled" : ""))}${btn("tools", "Website tools", "text-button")}</div></div><div class="canvas ${state.device === "mobile" ? "mobile" : ""}"><iframe id="canvas" title="Your website" sandbox="allow-scripts"></iframe></div></div>${state.preview ? "" : `<div class="editor-dock"><div id="selection" class="selection-context"><span>Select something to shape it, or ask for a change.</span>${btn("sections", "Arrange sections", "text-button")}</div><form id="edit-form"><label class="sr-only" for="edit-prompt">Ask Clay to change anything</label><textarea id="edit-prompt" rows="1" maxlength="4000" placeholder="Ask Clay to change anything…" required></textarea><button class="send" aria-label="Apply change">${icon("send")}</button></form><div class="dock-footer"><span>${state.demo ? "Example website · try direct editing" : "Your ideas, brought to life."}</span><span>Double-click text to edit directly</span></div></div>`}</main>`;
+    `<main id="main" class="workspace ${state.preview ? "previewing" : ""}"><div class="workspace-bar"><div class="website-title">${btn("pages", esc(m.name) + " <span>⌄</span>", "text-button")}<span id="save-status">${statusLabel()}</span></div><div class="device-controls" aria-label="Preview size">${btn("desktop", icon("desktop"), "icon-button " + (state.device === "desktop" ? "active" : ""), 'aria-label="Desktop preview"')}${btn("mobile", icon("mobile"), "icon-button " + (state.device === "mobile" ? "active" : ""), 'aria-label="Mobile preview"')}</div><div class="workspace-actions">${btn("history", "Previous versions", "text-button")}${btn("preview", state.preview ? "Back to editing" : "Preview", "outline")}${btn("publish", "Publish " + icon("arrow"), "primary")}</div></div><div class="canvas-surround"><div class="canvas-top"><div><span id="page-name">${esc(m.pages.find((p) => p.id === state.page)?.title || "Home")}</span><span> / </span>${btn("pages", "Pages", "text-button")}</div><div>${btn("undo", icon("undo"), "icon-button", 'aria-label="Undo" ' + (!state.undo.length ? "disabled" : ""))}${btn("redo", icon("redo"), "icon-button", 'aria-label="Redo" ' + (!state.redo.length ? "disabled" : ""))}${btn("tools", "Website tools", "text-button")}</div></div><div class="canvas ${state.device === "mobile" ? "mobile" : ""}"><iframe id="canvas" title="Your website" sandbox="allow-scripts"></iframe></div></div>${state.preview ? "" : `<div class="editor-dock"><div class="conversation-heading"><h2>Make it yours.</h2><p>Small changes. New possibilities.</p></div><div class="conversation" id="conversation" aria-live="polite">${state.messages.length ? state.messages.map((x) => `<p class="message ${x.role}">${esc(x.text)}</p>`).join("") : `<p class="message">Your website is ready to shape. Select anything on the right, or describe a change below.</p><div class="conversation-tools">${btn("pages", "Manage pages", "text-button")}${btn("sections", "Organize your content", "text-button")}${btn("tools", "Explore editing tools", "text-button")}</div>`}</div><div id="selection" class="selection-context"><span>Select something to shape it, or ask for a change.</span>${btn("sections", "Arrange sections", "text-button")}</div><form id="edit-form"><label class="sr-only" for="edit-prompt">Ask Clay to change anything</label><textarea id="edit-prompt" rows="1" maxlength="4000" placeholder="Ask Clay to change anything…" required></textarea><button class="send" aria-label="Apply change">${icon("send")}</button></form><div class="dock-footer"><span>${state.demo ? "Example website · try direct editing" : "Your ideas, brought to life."}</span><span>Double-click text to edit directly</span></div></div>`}</main>`;
   renderCanvas(progressive);
   if ($("#edit-form"))
     $("#edit-form").onsubmit = async (e) => {
@@ -226,12 +340,21 @@ function workspace(progressive = false) {
         );
         return;
       }
+      state.messages.push({ role: "you", text: prompt });
+      $("#conversation").insertAdjacentHTML(
+        "beforeend",
+        `<p class="message you">${esc(prompt)}</p>`,
+      );
       await busy(e.submitter, async () => {
         const r = await api.invoke("edit", {
           siteId: state.site.id,
           prompt,
           selected: state.selected,
           pageId: state.page,
+        });
+        state.messages.push({
+          role: "clay",
+          text: r.question || r.summary || "Your website has been updated.",
         });
         if (r.question) {
           showPanel("A little more detail", `<p>${esc(r.question)}</p>`);
@@ -712,7 +835,7 @@ async function publishSite() {
 async function doPublish() {
   showPanel(
     "Opening your doors",
-    '<span class="clay-spinner">✳</span><p>Publishing your website. Your last live version stays available.</p>',
+    '<span class="progress-line" aria-hidden="true"></span><p>Publishing your website. Your last live version stays available.</p>',
   );
   try {
     await api.invoke("publish", { siteId: state.site.id });
@@ -777,7 +900,19 @@ async function download() {
 function profile() {
   app.innerHTML =
     header("profile") +
-    `<main id="main" class="profile"><div class="profile-heading"><div><p class="eyebrow">YOUR LITTLE CORNER</p><h1>${esc(state.user?.user_metadata?.name || "Make yourself at home.")}</h1><p>${esc(state.user?.email || "Explore your website and its possibilities.")}</p></div>${btn("settings", "Settings", "outline")}</div><section><div class="section-heading"><h2>Your website</h2><span>One website. All yours.</span></div>${siteList()}</section><section class="activity"><div class="section-heading"><h2>A little perspective</h2><span>Last 30 days</span></div><div id="activity-content"><p>${state.sites.length ? "Loading your website activity…" : "Publish your website to start seeing visitors and messages here."}</p></div></section></main>`;
+    `<main id="main" class="profile"><aside class="profile-nav"><div class="profile-avatar">${esc((state.user?.email || "C").slice(0, 1).toUpperCase())}</div><h2>Your profile</h2>${btn("settings", "Account", "sidebar-link")}${btn("theme", "Appearance", "sidebar-link")}${btn("settings", "Security & help", "sidebar-link")}${btn("signout", "Sign out", "sidebar-link")}</aside><div class="profile-heading"><div><p class="eyebrow">YOUR LITTLE CORNER</p><h1>${esc(state.user?.user_metadata?.name || "Make yourself at home.")}</h1><p>${esc(state.user?.email || "Explore your website and its possibilities.")}</p></div>${btn("settings", "Settings", "outline")}</div><section class="profile-site"><div class="section-heading"><h2>Your website</h2><span>One website. All yours.</span></div>${siteList()}</section><section class="profile-account"><h2>Account details</h2><form id="profile-account-form" class="stack-form"><label>Your name<input name="name" value="${esc(state.user?.user_metadata?.name || "")}" ${state.demo ? "disabled" : ""}></label><label>Email address<input value="${esc(state.user?.email || "Example workspace")}" disabled></label><button class="primary" ${state.demo ? "disabled" : ""}>Save changes</button></form></section><section class="activity"><div class="section-heading"><h2>A little perspective</h2><span>Last 30 days</span></div><div id="activity-content"><p>${state.sites.length ? "Loading your website activity…" : "Publish your website to start seeing visitors and messages here."}</p></div></section></main>`;
+  $("#profile-account-form").onsubmit = (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      const c = await api.client();
+      const { data, error } = await c.auth.updateUser({
+        data: { name: new FormData(e.target).get("name") },
+      });
+      if (error) throw error;
+      state.user = data.user;
+      toast("Your name has been updated.");
+    });
+  };
   if (state.sites.length)
     run(async () => {
       const { events, contacts } = state.demo
@@ -852,6 +987,59 @@ async function run(fn) {
   }
 }
 const actions = {
+  showcase: (button) => {
+    const examples = [
+      {
+        name: "forma",
+        headline: "Less, but<br>with meaning.",
+        tag: "THOUGHTFULLY MADE",
+        description:
+          "Honest materials. Quiet details.<br>Furniture for a life well lived.",
+        image:
+          "https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=900&q=85",
+        alt: "Quiet interior with natural materials",
+        background: "#efeee8",
+      },
+      {
+        name: "wildflower",
+        headline: "For the<br>everyday joys.",
+        tag: "SEASONAL FLOWERS",
+        description:
+          "A little colour. A thoughtful gesture.<br>Flowers for every kind of day.",
+        image:
+          "https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=900&q=85",
+        alt: "Yellow spring flowers",
+        background: "#f0e8e4",
+      },
+      {
+        name: "still studio",
+        headline: "Stories worth<br>keeping.",
+        tag: "PORTRAITS & PLACES",
+        description:
+          "Natural light. Honest moments.<br>Photography with a personal touch.",
+        image:
+          "https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=900&q=85",
+        alt: "A study of light and objects",
+        background: "#e6eaec",
+      },
+    ];
+    const x = examples[Number(button.dataset.index)];
+    if (!x) return;
+    $(".sample-nav b").textContent = x.name;
+    $(".sample-hero h2").innerHTML = x.headline;
+    $(".sample-hero .small-caps").textContent = x.tag;
+    $(".sample-hero div > p:not(.small-caps)").innerHTML = x.description;
+    $(".sample-hero img").src = x.image;
+    $(".sample-hero img").alt = x.alt;
+    $(".sample-interior").style.background = x.background;
+    document.querySelectorAll('[data-action="showcase"]').forEach((b) => {
+      b.classList.toggle("active", b === button);
+      b.setAttribute("aria-pressed", String(b === button));
+    });
+  },
+  "retry-generation": () => generate(),
+  "resume-generation": () => generate(true),
+  "blank-site": blankSite,
   signup: () => {
     panel.close();
     state.demo = false;

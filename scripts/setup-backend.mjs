@@ -40,6 +40,12 @@ if (!tables[0]?.present) {
   });
   console.log("Installed Clay tables and access policies.");
 } else console.log("Clay tables already exist; migration skipped.");
+await manage("/database/query", "POST", {
+  query: await readFile(
+    "supabase/migrations/202610010001_generation_jobs.sql",
+    "utf8",
+  ),
+});
 const gh = await fetch(
   "https://api.github.com/repos/connectraunakt-gif/Clay/pages",
   {
@@ -60,14 +66,22 @@ if (pages?.html_url) {
     new URL(pages.html_url).origin + ",http://localhost:4173";
   console.log("Configured email sign-in redirects.");
 }
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+if (
+  /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(
+    process.env.GOOGLE_CLIENT_ID || "",
+  ) &&
+  /^GOCSPX-[A-Za-z0-9_-]+$/.test(process.env.GOOGLE_CLIENT_SECRET || "")
+) {
   await manage("/config/auth", "PATCH", {
     external_google_enabled: true,
     external_google_client_id: process.env.GOOGLE_CLIENT_ID,
     external_google_secret: process.env.GOOGLE_CLIENT_SECRET,
   });
-  console.log("Google sign-in enabled.");
-}
+  console.log("Google credentials installed; verify sign-in in the browser.");
+} else
+  console.log(
+    "Google setup skipped: valid Google OAuth credentials are still needed.",
+  );
 const names = [
   "NVIDIA_API_KEY",
   "NVIDIA_MODEL",

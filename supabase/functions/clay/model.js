@@ -10,7 +10,12 @@ export const esc = (v = "") =>
 export const clone = (v) => structuredClone(v);
 export const safeUrl = (v = "") =>
   /^(https?:\/\/|mailto:|tel:|#|\.\/)/i.test(v) ? v : "#";
-export const safeImageUrl = (v = "") => /^https:/; //i.test(v)||/^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v)?v:'';
+export const safeImageUrl = (v = "") =>
+  typeof v === "string" &&
+  (/^https:\/\//i.test(v) ||
+    /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v))
+    ? v
+    : "";
 export const fonts = ["Inter", "Georgia", "Arial", "Trebuchet MS"];
 export const sectionTypes = [
   "hero",
@@ -72,7 +77,16 @@ export function validate(m) {
         check(e.id);
         if (!["heading", "text", "image", "button", "item"].includes(e.type))
           throw Error("This content is not supported.");
-        for (const k of ["text", "src", "alt", "href", "price", "description"])
+        for (const k of [
+          "text",
+          "src",
+          "alt",
+          "href",
+          "price",
+          "description",
+          "credit",
+          "creditUrl",
+        ])
           if (
             e[k] != null &&
             (typeof e[k] !== "string" ||
@@ -195,6 +209,8 @@ export function applyOperations(model, operations) {
         Object.assign(f.element, {
           src: o.value.src,
           alt: String(o.value.alt || ""),
+          credit: String(o.value.credit || ""),
+          creditUrl: String(o.value.creditUrl || ""),
         });
         break;
       case "change_colors":
@@ -386,9 +402,9 @@ function contrast(a, b) {
 const readable = (background, preferred) =>
   contrast(background, preferred) >= 4.5
     ? preferred
-    : contrast(background, "#ffffff") > contrast(background, "#171d24")
+    : contrast(background, "#ffffff") > contrast(background, "#000000")
       ? "#ffffff"
-      : "#171d24";
+      : "#000000";
 export function renderDocument(
   model,
   pageId,
@@ -417,7 +433,7 @@ export function renderDocument(
       case "text":
         return `<p${a}>${esc(e.text).replace(/\n/g, "<br>")}</p>`;
       case "image":
-        return `<img${a} src="${esc(safeImageUrl(e.src))}" alt="${esc(e.alt)}" loading="${hero ? "eager" : "lazy"}">`;
+        return `<figure${a}><img src="${esc(safeImageUrl(e.src))}" alt="${esc(e.alt)}" loading="${hero ? "eager" : "lazy"}">${e.credit ? `<figcaption><a href="${esc(safeUrl(e.creditUrl))}" target="_blank" rel="noopener noreferrer">${esc(e.credit)}</a></figcaption>` : ""}</figure>`;
       case "button":
         return `<a class="button"${a} href="${esc(safeUrl(e.href))}">${esc(e.text)} <span aria-hidden="true">↗</span></a>`;
       case "item":
@@ -442,7 +458,7 @@ export function renderDocument(
         }${s.type === "products" ? `<div class="products">${m.content.map((c) => `<article><h3>${esc(c.name)}</h3><p>${esc(c.description)}</p><strong>${esc(c.price)}</strong></article>`).join("")}</div>` : ""}${s.type === "contact" ? `<form id="contact"><label>Your name<input name="name" maxlength="150" required autocomplete="name"></label><label>Email address<input name="email" type="email" maxlength="250" required autocomplete="email"></label><label>How can we help?<textarea name="message" maxlength="5000" required></textarea></label><input name="website" tabindex="-1" autocomplete="off" class="honey" aria-hidden="true"><button class="button">Send message</button><p role="status" id="form-status"></p></form>` : ""}</div></section>`,
     )
     .join("");
-  const css = `*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:${m.theme.background};color:${readable(m.theme.background, m.theme.text)};font-family:'${m.theme.font}',sans-serif;font-size:16px;line-height:1.65}a{color:inherit;text-decoration:none}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid ${m.theme.accent};outline-offset:5px}header{max-width:1280px;margin:auto;padding:28px 6%;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{font-size:28px;font-weight:600;letter-spacing:-1px}nav{display:flex;gap:26px;flex-wrap:wrap;font-family:Inter,Arial,sans-serif;font-size:14px}h1{font-size:clamp(40px,5.5vw,78px);line-height:1.06;font-weight:400;letter-spacing:-.04em;margin:0 0 28px}h2{font-size:clamp(28px,3vw,44px);line-height:1.2;font-weight:400;letter-spacing:-.025em;margin:0 0 24px}h3{font-size:24px;line-height:1.3}p{max-width:620px;font-family:Inter,Arial,sans-serif;line-height:1.8;opacity:.85}section{padding:${space} 6%}.inside{max-width:1120px;margin:auto}.split .inside{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}.hero img{width:100%;height:520px;object-fit:cover}.button{display:inline-flex;gap:24px;justify-content:center;align-items:center;background:${m.theme.accent};color:${readable(m.theme.accent, "#ffffff")};padding:14px 23px;border:0;border-radius:3px;font:500 15px Inter,Arial,sans-serif;cursor:pointer;margin-top:16px}.center{text-align:center}.center p{margin:20px auto}.gallery .inside,.products,.grid .inside{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:28px}.gallery h2,.grid h2{grid-column:1/-1}img{max-width:100%;object-fit:cover}.gallery img{height:320px;width:100%}article{padding:24px;border:1px solid currentColor}footer{padding:32px 6%;border-top:1px solid #8884;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font:14px Inter,Arial,sans-serif}form{max-width:560px;text-align:left}label{display:block;font:15px Inter,Arial,sans-serif;margin:20px 0}input,textarea{width:100%;padding:14px;border:1px solid #8888;background:transparent;color:inherit;font:inherit;margin-top:8px;border-radius:4px}textarea{min-height:120px}.honey{position:absolute;left:-9999px}[data-clay-id]{cursor:pointer}[data-clay-id]:hover{outline:2px solid #748da7;outline-offset:4px}[data-clay-id].selected{outline:2px solid #3f6791;outline-offset:4px}${progressive ? "section{animation:appear .7s both;animation-delay:calc(var(--order)*.32s)}@keyframes appear{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}" : ""}@media(max-width:650px){header{align-items:flex-start}.brand{font-size:24px}nav{gap:12px}.split .inside{grid-template-columns:1fr;gap:32px}section{padding:48px 6%}.hero img{height:360px}h1{font-size:44px}}@media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}`;
+  const css = `*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:${m.theme.background};color:${readable(m.theme.background, m.theme.text)};font-family:'${m.theme.font}',sans-serif;font-size:16px;line-height:1.65}a{color:inherit;text-decoration:none}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid ${m.theme.accent};outline-offset:5px}header{max-width:1280px;margin:auto;padding:28px 6%;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{font-size:28px;font-weight:600;letter-spacing:-1px}nav{display:flex;gap:26px;flex-wrap:wrap;font-family:Inter,Arial,sans-serif;font-size:14px}h1{font-size:clamp(40px,5.5vw,78px);line-height:1.06;font-weight:400;letter-spacing:-.04em;margin:0 0 28px}h2{font-size:clamp(28px,3vw,44px);line-height:1.2;font-weight:400;letter-spacing:-.025em;margin:0 0 24px}h3{font-size:24px;line-height:1.3}p{max-width:620px;font-family:Inter,Arial,sans-serif;line-height:1.8;opacity:1}section{padding:${space} 6%}.inside{max-width:1120px;margin:auto}.split .inside{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}.hero img{width:100%;height:520px;object-fit:cover}.button{display:inline-flex;gap:24px;justify-content:center;align-items:center;background:${m.theme.accent};color:${readable(m.theme.accent, "#ffffff")};padding:14px 23px;border:0;border-radius:3px;font:500 15px Inter,Arial,sans-serif;cursor:pointer;margin-top:16px}.center{text-align:center}.center p{margin:20px auto}.gallery .inside,.products,.grid .inside{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:28px}.gallery h2,.grid h2{grid-column:1/-1}figure{margin:0;min-width:0}figcaption{font:12px Inter,Arial,sans-serif;line-height:1.5;margin-top:8px}figcaption a{text-decoration:underline}img{max-width:100%;object-fit:cover}.gallery img{height:320px;width:100%}article{padding:24px;border:1px solid currentColor}footer{padding:32px 6%;border-top:1px solid #8884;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font:14px Inter,Arial,sans-serif}form{max-width:560px;text-align:left}label{display:block;font:15px Inter,Arial,sans-serif;margin:20px 0}input,textarea{width:100%;padding:14px;border:1px solid #8888;background:transparent;color:inherit;font:inherit;margin-top:8px;border-radius:4px}textarea{min-height:120px}.honey{position:absolute;left:-9999px}[data-clay-id]{cursor:pointer}[data-clay-id]:hover{outline:2px solid #748da7;outline-offset:4px}[data-clay-id].selected{outline:2px solid #3f6791;outline-offset:4px}${progressive ? "section{animation:appear .7s both;animation-delay:calc(var(--order)*.32s)}@keyframes appear{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}" : ""}@media(max-width:650px){header{align-items:flex-start}.brand{font-size:24px}nav{gap:12px}.split .inside{grid-template-columns:1fr;gap:32px}section{padding:48px 6%}.hero img{height:360px}h1{font-size:44px}}@media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}`;
   const payload = JSON.stringify({ endpoint, siteId, publicKey }).replace(
     /</g,
     "\\u003c",

@@ -1,0 +1,188 @@
+{
+  "name": "Morrow Coffee",
+  "description": "Specialty coffee and seasonal pastries, a calm place to pause with a friend",
+  "email": "hello@example.com",
+  "phone": "",
+  "address": "",
+  "brand": {
+    "wordmark": "MORROW",
+    "tagline": "a slower, warmer morning",
+    "showMark": true
+  },
+  "theme": {
+    "headingFont": "Fraunces",
+    "bodyFont": "Manrope",
+    "radius": "soft",
+    "buttonStyle": "solid",
+    "motion": "subtle",
+    "headingScale": "balanced",
+    "contentWidth": 960,
+    "background": "#faf6f0",
+    "text": "#2a251e",
+    "accent": "#6b4530",
+    "font": "DM Sans",
+    "spacing": "comfortable",
+    "surface": "#e8e4dc"
+  },
+  "navigation": [
+    {
+      "pageId": "5cffb915-857b-4f82-9eb9-464b2ab0a3fd",
+      "label": "Home"
+    },
+    {
+      "pageId": "5cffb915-857b-4f82-9eb9-464b2ab0a3fd",
+      "sectionId": "462d3e2b-3271-4064-b4ee-7cb19a5679b3",
+      "label": "our approach"
+    },
+    {
+      "pageId": "5cffb915-857b-4f82-9eb9-464b2ab0a3fd",
+      "sectionId": "e3f8e7d9-ccd3-43c5-b429-8f356b0ac6ed",
+      "label": "Gallery"
+    },
+    {
+      "pageId": "5cffb915-857b-4f82-9eb9-464b2ab0a3fd",
+      "sectionId": "3bfd81d3-786e-4666-b23b-064f47b887d5",
+      "label": "Contact"
+    }
+  ],
+  "content": [
+    {
+      "id": "28a910d0-2b68-4b14-99f3-2233d2cb84f5",
+      "name": "Morrow Coffee",
+      "description": "Specialty coffee and seasonal pastries",
+      "price": ""
+    }
+  ],
+  "pages": [
+    {
+      "id": "5cffb915-857b-4f82-9eb9-464b2ab0a3fd",
+      "title": "Morrow Coffee",
+      "slug": "index",
+      "sections": [
+        {
+          "id": "db5c28f3-7e04-4da9-b56e-7e0a5f2a505e",
+          "type": "hero",
+          "layout": "split",
+          "elements": [
+            {
+              "id": "c6afb979-0343-4867-b6d2-290c372a3dbf",
+              "type": "heading",
+              "text": "a slower, warmer morning"
+            },
+            {
+              "id": "7335b25a-2961-47cc-836f-1f68d23e2609",
+              "type": "text",
+              "text": "Specialty coffee and seasonal pastries in a calm space to pause with a friend"
+            },
+            {
+              "id": "d0358038-7001-4978-ac09-ac215d3fef54",
+              "type": "button",
+              "text": "Get in touch",
+              "href": "#"
+            },
+            {
+              "id": "a7d690fd-b495-43a9-b94a-b91c7ada8421",
+              "type": "image",
+              "src": "https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=1200&q=80",
+              "alt": "sunlit coffee shop interior with warm morning light, wooden tables and soft shadows",
+              "credit": "Photo: Unsplash",
+              "creditUrl": "https://unsplash.com/license"
+            }
+          ],
+          "mediaPosition": "left",
+          "imageHeight": 600,
+          "contentAlign": "left",
+          "gap": 32,
+          "padding": 48,
+          "maxWidth": 960
+        },
+        {
+          "id": "462d3e2b-3271-4064-b4ee-7cb19a5679b3",
+          "type": "text",
+          "layout": "center",
+          "elements": [
+            {
+              "id": "312a3e18-4e68-45e8-9826-5e7d745d28e9",
+              "type": "heading",
+              "text": "our approach"
+            },
+            {
+              "id": "23fdc7a6-4273-4ca7-b5f0-cd922d9739f4",
+              "type": "text",
+              "text": "We believe coffee should be slow and thoughtful. Every bean is sourced with care, roasted to highlight its character, and prepared with patience. Our pastries bake daily, changing with the seasons to always taste fresh. No rush. No noise. Just good company and a good cup."
+            }
+          ],
+          "background": "#faf6f0",
+          "padding": 48,
+          "maxWidth": 960
+        },
+        {
+          "id": "e3f8e7d9-ccd3-43c5-b429-8f356b0ac6ed",
+          "type": "gallery",
+          "layout": "grid",
+          "elements": [
+            {
+              "id": "14778948-f745-45b7-b76c-8b214222d78b",
+              "type": "heading",
+              "text": "illustrative menu"
+            },
+            {
+              "id": "447a0553-9da9-4fb9-ae39-59b4a15ec967",
+              "type": "item",
+              "text": "single origin pour-over",
+              "description": "Ethiopian Yirgacheffe, light roast",
+              "price": ""
+            },
+            {
+              "id": "ad4a099f-08ff-47f5-a183-5ca65b680aee",
+              "type": "item",
+              "text": "cortado",
+              "description": "balanced espresso and steamed milk",
+              "price": ""
+            },
+            {
+              "id": "af819b1d-6ab0-4195-b747-de77fee14295",
+              "type": "item",
+              "text": "seasonal pastry",
+              "description": "baked fresh daily",
+              "price": ""
+            }
+          ],
+          "background": "#e8e4dc",
+          "gap": 24,
+          "padding": 32,
+          "maxWidth": 960
+        },
+        {
+          "id": "3bfd81d3-786e-4666-b23b-064f47b887d5",
+          "type": "contact",
+          "layout": "center",
+          "elements": [
+            {
+              "id": "15e22637-a25a-4b9e-865e-412b3ba3b4e9",
+              "type": "heading",
+              "text": "get in touch"
+            },
+            {
+              "id": "9e15eb06-cd6f-49fa-95bd-b1ba8e09aeaa",
+              "type": "text",
+              "text": "Say hello or ask about our beans"
+            }
+          ],
+          "background": "#faf6f0",
+          "padding": 48,
+          "maxWidth": 960,
+          "form": {
+            "align": "center",
+            "textAlign": "center",
+            "width": 560,
+            "nameLabel": "Your name",
+            "emailLabel": "Your email",
+            "messageLabel": "How can we help?",
+            "buttonText": "Send message"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -18,19 +18,26 @@ createServer(async (req, res) => {
     const file = resolve(root, "." + p);
     if (
       !file.startsWith(root + sep) ||
-      ![".html", ".js", ".css", ".png", ".svg", ".webmanifest", ".mp4"].includes(
-        extname(file),
-      ) ||
+      ![
+        ".html",
+        ".js",
+        ".css",
+        ".png",
+        ".svg",
+        ".webmanifest",
+        ".mp4",
+      ].includes(extname(file)) ||
       p.includes("supabase/")
     )
       throw Error();
+    const contents = await readFile(file);
     res.writeHead(200, {
       "Content-Type": types[extname(file)],
       "Cache-Control": "no-cache",
     });
-    res.end(await readFile(file));
+    res.end(contents);
   } catch {
-    res.writeHead(404);
+    if (!res.headersSent) res.writeHead(404);
     res.end("Not found");
   }
 }).listen(4173, "127.0.0.1", () => console.log("Clay: http://localhost:4173"));

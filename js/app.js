@@ -9,6 +9,7 @@ import {
   renderDocument,
   exportFiles,
   fonts,
+  layouts,
   safeImageUrl,
 } from "./model.js";
 import * as api from "./api.js";
@@ -459,6 +460,7 @@ function workspace(progressive = false) {
           prompt,
           selected: state.selected,
           pageId: state.page,
+          history: state.messages.slice(-7, -1),
         });
         if (r.question) {
           state.messages.push({ role: "clay", text: r.question });
@@ -507,7 +509,7 @@ function selection() {
   const f = locate(state.site.model, state.selected);
   if (!f) return;
   $("#selection").innerHTML =
-    `<span><i></i> ${esc(f.content ? "Item" : f.element ? f.element.type : f.section ? f.section.type + " section" : state.selected === "navigation" ? "Navigation" : "Page")} selected</span><div>${btn("edit-selected", "Edit", "text-button")}${btn("restore-selected", "Previous versions", "text-button")}${btn("clear-selection", icon("close"), "icon-button", 'aria-label="Clear selection"')}</div>`;
+    `<span><i></i> ${esc(f.form ? "Contact form" : f.content ? "Item" : f.element ? f.element.type : f.section ? f.section.type + " section" : state.selected === "navigation" ? "Navigation" : "Page")} selected</span><div>${btn("edit-selected", "Edit", "text-button")}${btn("restore-selected", "Previous versions", "text-button")}${btn("clear-selection", icon("close"), "icon-button", 'aria-label="Clear selection"')}</div>`;
 }
 window.addEventListener("message", async (e) => {
   if (e.source !== $("#canvas")?.contentWindow || !state.site) return;
@@ -740,6 +742,14 @@ function sections() {
 function editSelected() {
   const f = locate(state.site.model, state.selected);
   if (!f) return;
+  if (f.form) {
+    editFormSettings(f.section);
+    return;
+  }
+  if (f.brand) {
+    style();
+    return;
+  }
   if (f.content) {
     contentForm(f.content.id);
     return;
@@ -751,17 +761,19 @@ function editSelected() {
   if (!f.element) {
     showPanel(
       "Edit section",
-      `<p>Select the text, image, or button you want to change.</p>${(f.section?.elements || []).map((e) => btn("choose-element", esc((e.text || e.alt || e.type).slice(0, 70)), "tool-row", `data-id="${e.id}"`)).join("")}<form id="section-style" class="stack-form"><label>Layout<select name="layout">${["stack", "split", "center", "grid", "list"].map((l) => `<option ${f.section.layout === l ? "selected" : ""}>${l}</option>`).join("")}</select></label><label class="color-label">Section colour<input type="color" name="background" value="${f.section.background || state.site.model.theme.background}"></label><button class="outline">Apply to section</button></form><form id="element-add" class="stack-form"><label>Add content<select name="type"><option value="text">Text</option><option value="heading">Heading</option><option value="image">Image</option><option value="button">Button</option><option value="item">Service or item</option></select></label><button class="outline">Add content ＋</button></form>`,
+      `<p>Select the text, image, or button you want to change.</p>${(f.section?.elements || []).map((e) => btn("choose-element", esc((e.text || e.alt || e.type).slice(0, 70)), "tool-row", `data-id="${e.id}"`)).join("")}<form id="section-style" class="stack-form"><label>Layout<select name="layout">${layouts.map((l) => `<option ${f.section.layout === l ? "selected" : ""}>${l}</option>`).join("")}</select></label><label class="color-label">Section colour<input type="color" name="background" value="${f.section.background || state.site.model.theme.background}"></label><label>Image position<select name="mediaPosition"><option value="right" ${f.section.mediaPosition !== "left" ? "selected" : ""}>right</option><option value="left" ${f.section.mediaPosition === "left" ? "selected" : ""}>left</option></select></label><label>Image height<input type="number" name="imageHeight" min="200" max="900" value="${f.section.imageHeight || 500}"></label><button class="outline">Apply to section</button></form>${f.section.type === "contact" ? btn("form-settings", "Edit contact form", "outline", `data-id="${f.section.id}"`) : ""}<form id="element-add" class="stack-form"><label>Add content<select name="type"><option value="text">Text</option><option value="heading">Heading</option><option value="image">Image</option><option value="button">Button</option><option value="item">Service or item</option></select></label><button class="outline">Add content ＋</button></form>`,
     );
     $("#section-style").onsubmit = (e) => {
       e.preventDefault();
+      const value = Object.fromEntries(new FormData(e.target));
+      value.imageHeight = Number(value.imageHeight);
       run(() =>
         change(
           [
             {
               type: "update_section",
               target: f.section.id,
-              value: Object.fromEntries(new FormData(e.target)),
+              value,
             },
           ],
           "Changed section style",
@@ -824,30 +836,87 @@ function editSelected() {
     });
   };
 }
+function editFormSettings(section) {
+  const f = section.form || {},
+    select = (name, value) =>
+      `<select name="${name}">${["left", "center", "right"].map((x) => `<option ${x === value ? "selected" : ""}>${x}</option>`).join("")}</select>`;
+  showPanel(
+    "Contact form",
+    `<form id="contact-settings" class="stack-form"><label>Form position${select("align", f.align || (section.layout === "center" ? "center" : "left"))}</label><label>Text alignment${select("textAlign", f.textAlign || "left")}</label><label>Form width<input type="number" name="width" min="280" max="1120" value="${f.width || 560}"></label>${[
+      ["nameLabel", "Name label", "Your name"],
+      ["emailLabel", "Email label", "Email address"],
+      ["messageLabel", "Message label", "How can we help?"],
+      ["buttonText", "Button label", "Send message"],
+    ]
+      .map(
+        ([key, label, defaultValue]) =>
+          `<label>${label}<input name="${key}" value="${esc(f[key] || defaultValue)}" maxlength="150" required></label>`,
+      )
+      .join("")}<button class="primary">Save form</button></form>`,
+  );
+  $("#contact-settings").onsubmit = (e) => {
+    e.preventDefault();
+    const value = Object.fromEntries(new FormData(e.target));
+    value.width = Number(value.width);
+    run(async () => {
+      await change(
+        [{ type: "update_form", target: section.id + ":form", value }],
+        "Updated contact form",
+      );
+      panel.close();
+    });
+  };
+}
 function style() {
-  const t = state.site.model.theme;
+  const m = state.site.model,
+    t = m.theme,
+    b = m.brand || {};
+  const fontSelect = (name, value) =>
+    `<select name="${name}">${fonts.map((font) => `<option ${font === value ? "selected" : ""}>${font}</option>`).join("")}</select>`;
+  const options = (name, items, value) =>
+    `<select name="${name}">${items.map((x) => `<option ${x === value ? "selected" : ""}>${x}</option>`).join("")}</select>`;
   showPanel(
     "Look & feel",
-    `<form id="style-form" class="stack-form"><p>Small details. A whole different feeling.</p>${btn("theme-history", "Previous styles", "text-button")}${["background", "text", "accent"].map((k) => `<label class="color-label">${k[0].toUpperCase() + k.slice(1)}<input type="color" name="${k}" value="${t[k]}"></label>`).join("")}<label>Typography<select name="font">${fonts.map((f) => `<option ${t.font === f ? "selected" : ""}>${f}</option>`).join("")}</select></label><label>Breathing room<select name="spacing">${["compact", "comfortable", "spacious"].map((s) => `<option ${t.spacing === s ? "selected" : ""}>${s}</option>`).join("")}</select></label><button class="primary">Apply style</button></form>`,
+    `<form id="style-form" class="stack-form"><p>A consistent identity, from your first impression to your last detail.</p>${btn("theme-history", "Previous styles", "text-button")}${["background", "text", "accent", "surface"].map((key) => `<label class="color-label">${{ background: "Background", text: "Text", accent: "Accent", surface: "Card background" }[key]}<input type="color" name="${key}" value="${t[key] || t.background}"></label>`).join("")}<label>Heading typeface${fontSelect("headingFont", t.headingFont || t.font)}</label><label>Body typeface${fontSelect("bodyFont", t.bodyFont || "Inter")}</label><label>Heading size${options("headingScale", ["balanced", "display"], t.headingScale || "balanced")}</label><label>Breathing room${options("spacing", ["compact", "comfortable", "spacious"], t.spacing)}</label><label>Corners${options("radius", ["square", "soft", "round"], t.radius || "soft")}</label><label>Buttons${options("buttonStyle", ["solid", "outline", "pill"], t.buttonStyle || "solid")}</label><label>Movement & hover effects${options("motion", ["none", "subtle", "expressive"], t.motion || "subtle")}</label><details><summary>Brand identity</summary><label>Wordmark<input name="wordmark" value="${esc(b.wordmark || m.name)}" maxlength="120"></label><label>Tagline<input name="tagline" value="${esc(b.tagline || "")}" maxlength="240"></label><label>Logo image link<input name="logoSrc" value="${esc(b.logoSrc || "")}" placeholder="https://…"></label><label>Describe your logo<input name="logoAlt" value="${esc(b.logoAlt || m.name)}"></label><label class="check-label"><input type="checkbox" name="showMark" ${b.showMark ? "checked" : ""}> Show an initials mark</label></details><button class="primary">Apply style</button></form>`,
   );
   $("#style-form").onsubmit = (e) => {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(e.target));
-    run(() =>
-      change(
+    run(async () => {
+      const brand = {
+        wordmark: v.wordmark.trim() || m.name,
+        tagline: v.tagline,
+        logoSrc: v.logoSrc,
+        logoAlt: v.logoAlt,
+        showMark: v.showMark === "on",
+      };
+      const value = Object.fromEntries(
         [
-          {
-            type: "change_colors",
-            value: { background: v.background, text: v.text, accent: v.accent },
-          },
-          { type: "change_typography", value: v.font },
-          { type: "change_spacing", value: v.spacing },
+          "background",
+          "text",
+          "accent",
+          "surface",
+          "headingFont",
+          "bodyFont",
+          "headingScale",
+          "spacing",
+          "radius",
+          "buttonStyle",
+          "motion",
+        ].map((key) => [key, v[key]]),
+      );
+      await change(
+        [
+          { type: "update_design", value },
+          { type: "update_brand", value: brand },
         ],
-        "Updated website style",
-      ).then(() => panel.close()),
-    );
+        "Updated brand and website style",
+      );
+      panel.close();
+    });
   };
 }
+
 function content() {
   showPanel(
     "Your content",
@@ -886,9 +955,18 @@ function contentForm(id) {
   };
 }
 function navigation() {
+  const m = state.site.model,
+    entries = [
+      ...m.navigation.map((n) => ({ ...n, checked: true })),
+      ...m.pages
+        .filter(
+          (p) => !m.navigation.some((n) => n.pageId === p.id && !n.sectionId),
+        )
+        .map((p) => ({ pageId: p.id, label: p.title, checked: false })),
+    ];
   showPanel(
     "Navigation",
-    `<form id="nav-form" class="stack-form"><p>Choose the pages to show in your menu. Drag to change their order.</p><div id="nav-list">${[...state.site.model.navigation.map((n) => ({ id: n.pageId, title: n.label, checked: true })), ...state.site.model.pages.filter((p) => !state.site.model.navigation.some((n) => n.pageId === p.id))].map((p) => `<label class="nav-row" draggable="true" data-id="${p.id}"><span>⠿</span><input type="checkbox" name="visible" value="${p.id}" ${p.checked ? "checked" : ""}><input aria-label="Menu label" name="label-${p.id}" value="${esc(p.title)}" required></label>`).join("")}</div><button class="primary">Save navigation</button></form>`,
+    `<form id="nav-form" class="stack-form"><p>Choose the pages or sections to show in your menu. Drag to change their order.</p><div id="nav-list">${entries.map((n, i) => `<label class="nav-row" draggable="true" data-id="${i}" data-page="${esc(n.pageId)}" data-section="${esc(n.sectionId || "")}"><span>⠿</span><input type="checkbox" name="visible" value="${i}" ${n.checked ? "checked" : ""}><input aria-label="Menu label" name="label-${i}" value="${esc(n.label)}" required></label>`).join("")}</div><button class="primary">Save navigation</button></form>`,
   );
   let drag;
   $("#nav-list").ondragstart = (e) => (drag = e.target.closest(".nav-row"));
@@ -896,24 +974,28 @@ function navigation() {
   $("#nav-list").ondrop = (e) => {
     e.preventDefault();
     const row = e.target.closest(".nav-row");
-    if (drag && row && row !== drag) row.before(drag);
+    if (drag && row && drag !== row) row.before(drag);
   };
   $("#nav-form").onsubmit = (e) => {
     e.preventDefault();
     const data = new FormData(e.target),
       value = [...$("#nav-list").children]
-        .filter((r) => data.getAll("visible").includes(r.dataset.id))
-        .map((r) => ({
-          pageId: r.dataset.id,
-          label: data.get("label-" + r.dataset.id),
+        .filter((row) => data.getAll("visible").includes(row.dataset.id))
+        .map((row) => ({
+          pageId: row.dataset.page,
+          label: data.get("label-" + row.dataset.id),
+          ...(row.dataset.section ? { sectionId: row.dataset.section } : {}),
         }));
-    run(() =>
-      change([{ type: "update_navigation", value }], "Updated navigation").then(
-        () => panel.close(),
-      ),
-    );
+    run(async () => {
+      await change(
+        [{ type: "update_navigation", value }],
+        "Updated navigation",
+      );
+      panel.close();
+    });
   };
 }
+
 function info() {
   const m = state.site.model;
   showPanel(
@@ -1476,6 +1558,8 @@ const actions = {
     workspace();
   },
   "edit-selected": editSelected,
+  "form-settings": (b) =>
+    editFormSettings(locate(state.site.model, b.dataset.id).section),
   "clear-selection": () => {
     state.selected = null;
     workspace();
@@ -1669,6 +1753,7 @@ function elementStyle() {
   };
 }
 function moveDetails(f) {
+  if (f?.form) throw Error("Use form position to move a contact form.");
   if (f?.content)
     return { type: "move_content", list: state.site.model.content };
   if (f?.element)

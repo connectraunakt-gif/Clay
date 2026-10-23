@@ -9,7 +9,10 @@ function installCanvas(preview, initial) {
       const link = e.target.closest("[data-page]");
       if (link) {
         e.preventDefault();
-        send({ type: "clay-page", id: link.dataset.page });
+        const section =
+          link.dataset.section && document.getElementById(link.dataset.section);
+        if (section) section.scrollIntoView({ behavior: "smooth" });
+        else send({ type: "clay-page", id: link.dataset.page });
       }
     });
     document
@@ -32,13 +35,15 @@ function installCanvas(preview, initial) {
   document.body.append(bar);
   const id = (node) => node?.dataset.clayId;
   const kind = (node) =>
-    node?.tagName === "SECTION"
-      ? "section"
-      : node?.tagName === "HEADER"
-        ? "navigation"
-        : node?.closest(".catalogue")
-          ? "item"
-          : "element";
+    node?.tagName === "FORM"
+      ? "form"
+      : node?.tagName === "SECTION"
+        ? "section"
+        : node?.tagName === "HEADER"
+          ? "navigation"
+          : node?.closest(".catalogue")
+            ? "item"
+            : "element";
   const position = () => {
     if (pressed) return;
     if (!active || !active.isConnected) {
@@ -76,8 +81,11 @@ function installCanvas(preview, initial) {
           ? "Image"
           : "Content"
         : k[0].toUpperCase() + k.slice(1);
-    for (const b of bar.querySelectorAll("button"))
-      b.hidden = k === "navigation" && !["edit"].includes(b.dataset.tool);
+    for (const b of bar.querySelectorAll("[data-tool]"))
+      b.hidden =
+        (k === "navigation" && !["edit"].includes(b.dataset.tool)) ||
+        (k === "form" &&
+          !["edit", "style", "section"].includes(b.dataset.tool));
     bar.querySelector("[data-tool=section]").hidden =
       !node.closest("section") || k === "section";
     if (select) {
@@ -122,6 +130,12 @@ function installCanvas(preview, initial) {
     e.preventDefault();
     const link = e.target.closest("[data-page]");
     if (link) {
+      const section =
+        link.dataset.section && document.getElementById(link.dataset.section);
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth" });
+        return;
+      }
       send({ type: "clay-page", id: link.dataset.page });
       return;
     }
@@ -227,7 +241,12 @@ function installCanvas(preview, initial) {
     const node = e.target.closest("[data-clay-id]"),
       field = e.target.closest("[data-clay-field]");
     const text = field || node;
-    if (!node || !text || !/^(H1|H2|H3|P|STRONG|A)$/.test(text.tagName)) return;
+    if (
+      !node ||
+      !text ||
+      !/^(H1|H2|H3|P|STRONG|A|BLOCKQUOTE)$/.test(text.tagName)
+    )
+      return;
     e.preventDefault();
     activate(node, true);
     bar.hidden = true;
@@ -266,7 +285,12 @@ function installCanvas(preview, initial) {
       activate(node, true);
       bar.querySelector("[data-tool=edit]").focus();
     }
-    if (node && e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+    if (
+      node &&
+      !["form", "navigation"].includes(kind(node)) &&
+      e.altKey &&
+      ["ArrowUp", "ArrowDown"].includes(e.key)
+    ) {
       e.preventDefault();
       send({
         type: "clay-shift",

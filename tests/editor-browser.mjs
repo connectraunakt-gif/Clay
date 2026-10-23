@@ -75,6 +75,12 @@ try {
       ],
     },
   ];
+  model.pages[0].sections.push({
+    id: "contact-section",
+    type: "contact",
+    layout: "center",
+    elements: [{ id: "contact-title", type: "heading", text: "Say hello" }],
+  });
   model.content = [
     {
       id: "bread-content",
@@ -236,6 +242,37 @@ try {
     path: ".playwright/editor-controls-fixed.png",
     fullPage: true,
   });
+  await frame().locator('[data-clay-id="contact-section:form"]').hover();
+  await frame().getByRole("button", { name: "Edit", exact: true }).click();
+  await p.locator("#contact-settings [name=align]").selectOption("right");
+  await p.getByRole("button", { name: "Save form" }).click();
+  await saved((m) => m.pages[0].sections[2].form?.align === "right");
+  await p.getByRole("button", { name: "Undo", exact: true }).click();
+  await saved((m) => !m.pages[0].sections[2].form);
+  await p.getByRole("button", { name: "Redo", exact: true }).click();
+  await saved((m) => m.pages[0].sections[2].form?.align === "right");
+  await frame().locator('[data-clay-id="contact-section:form"]').hover();
+  await frame().getByRole("button", { name: "Style", exact: true }).click();
+  await p.locator("#contact-settings [name=align]").selectOption("center");
+  await p.locator("#contact-settings [name=textAlign]").selectOption("center");
+  await p.locator("#contact-settings [name=width]").fill("600");
+  await p.getByRole("button", { name: "Save form" }).click();
+  await saved(
+    (m) =>
+      m.pages[0].sections[2].form?.align === "center" &&
+      m.pages[0].sections[2].form.width === 600,
+  );
+  await p.getByRole("button", { name: "Website tools", exact: true }).click();
+  await p.getByRole("button", { name: /Look & feel/ }).click();
+  await p.locator("#style-form [name=headingFont]").selectOption("Fraunces");
+  await p.locator("#style-form [name=bodyFont]").selectOption("Manrope");
+  await p.getByRole("button", { name: "Apply style" }).click();
+  await saved(
+    (m) => m.theme.headingFont === "Fraunces" && m.theme.bodyFont === "Manrope",
+  );
+  console.log(
+    "PASS editable form target, form alignment, undo/redo and typography pairing",
+  );
   await p.getByRole("button", { name: "Mobile preview" }).click();
   assert.equal(
     await frame()

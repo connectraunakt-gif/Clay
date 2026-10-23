@@ -1,0 +1,213 @@
+{
+  "name": "Fieldwork Atelier",
+  "description": "Small-batch, architectural joinery",
+  "email": "studio@example.com",
+  "phone": "",
+  "address": "",
+  "brand": {
+    "wordmark": "Fieldwork Atelier",
+    "tagline": "Small-batch, architectural joinery",
+    "showMark": true
+  },
+  "theme": {
+    "headingFont": "Fraunces",
+    "bodyFont": "Manrope",
+    "radius": "soft",
+    "buttonStyle": "solid",
+    "motion": "subtle",
+    "headingScale": "balanced",
+    "contentWidth": 1080,
+    "background": "#faf9f7",
+    "text": "#1a1a1a",
+    "accent": "#3d3d3d",
+    "font": "DM Sans",
+    "spacing": "comfortable",
+    "surface": "#ffffff"
+  },
+  "navigation": [
+    {
+      "pageId": "b3c8318a-1e28-47ea-becb-37003d041c9d",
+      "label": "Home"
+    },
+    {
+      "pageId": "b3c8318a-1e28-47ea-becb-37003d041c9d",
+      "sectionId": "82e9baf8-9647-41c8-86ca-9376e3a2fbc8",
+      "label": "Careful Joinery"
+    },
+    {
+      "pageId": "b3c8318a-1e28-47ea-becb-37003d041c9d",
+      "sectionId": "5c958f1a-a9f9-45fb-8de5-1ab336910c8a",
+      "label": "Gallery"
+    },
+    {
+      "pageId": "b3c8318a-1e28-47ea-becb-37003d041c9d",
+      "sectionId": "526f6d2f-bc7d-4590-bcd8-636c0c25788b",
+      "label": "Contact"
+    }
+  ],
+  "content": [],
+  "pages": [
+    {
+      "id": "b3c8318a-1e28-47ea-becb-37003d041c9d",
+      "title": "Fieldwork Atelier",
+      "slug": "index",
+      "sections": [
+        {
+          "id": "c128a0e3-a157-41fc-9a33-06283efeaf1c",
+          "type": "hero",
+          "layout": "cover",
+          "elements": [
+            {
+              "id": "a3ad1ec6-f545-4bd8-9003-480aef5bc58b",
+              "type": "eyebrow",
+              "text": "Fieldwork Atelier"
+            },
+            {
+              "id": "37b09a99-8f41-4504-8453-e7d5a78c796c",
+              "type": "heading",
+              "text": "Small-batch, architectural joinery"
+            },
+            {
+              "id": "bb44a213-9129-4c44-8b13-b4b005631e62",
+              "type": "text",
+              "text": "Handcrafted wooden pieces with careful joinery and an architectural sensibility"
+            },
+            {
+              "id": "32a560cd-2cba-4ea3-b7ab-5c6eaee4a8ff",
+              "type": "button",
+              "text": "Get in touch",
+              "href": "#"
+            },
+            {
+              "id": "08f9a045-3b92-444e-b017-67777ac59190",
+              "type": "image",
+              "src": "https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=1200&q=80",
+              "alt": "sunlit wood workshop interior",
+              "credit": "Photo: Unsplash",
+              "creditUrl": "https://unsplash.com/license"
+            }
+          ],
+          "mediaPosition": "left",
+          "imageHeight": 600,
+          "contentAlign": "left",
+          "gap": 32,
+          "padding": 64,
+          "maxWidth": 1080
+        },
+        {
+          "id": "82e9baf8-9647-41c8-86ca-9376e3a2fbc8",
+          "type": "text",
+          "layout": "split",
+          "elements": [
+            {
+              "id": "55dd66d6-1da5-4ca0-9898-63ba94fecb86",
+              "type": "eyebrow",
+              "text": "Our Approach"
+            },
+            {
+              "id": "8f2c9770-2a09-47b4-bf92-adcd17d96dce",
+              "type": "heading",
+              "text": "Careful Joinery"
+            },
+            {
+              "id": "18a91f8a-e745-4e88-9e54-8705e6d0ccec",
+              "type": "text",
+              "text": "Each piece begins with material selection and ends with a joint that speaks to both function and form. We work with local timber and traditional techniques to create furniture that ages gracefully."
+            },
+            {
+              "id": "d6b0556d-ffa4-49e9-997f-39b57df23d6b",
+              "type": "image",
+              "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Weathered_wood_grain_texture_macro_closeup_detail.jpg/1280px-Weathered_wood_grain_texture_macro_closeup_detail.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+              "alt": "close-up wood grain texture",
+              "credit": "MacrofyStudio · CC BY 4.0",
+              "creditUrl": "https://commons.wikimedia.org/wiki/File:Weathered_wood_grain_texture_macro_closeup_detail.jpg"
+            }
+          ],
+          "background": "#faf9f7",
+          "mediaPosition": "right",
+          "imageHeight": 400,
+          "contentAlign": "left",
+          "gap": 24,
+          "padding": 48,
+          "maxWidth": 1080
+        },
+        {
+          "id": "5c958f1a-a9f9-45fb-8de5-1ab336910c8a",
+          "type": "gallery",
+          "layout": "grid",
+          "elements": [
+            {
+              "id": "857e1982-f0fd-48a6-a6b9-689350af4d85",
+              "type": "heading",
+              "text": "Selected Work"
+            },
+            {
+              "id": "3f0aec59-2b2a-4208-8c36-e7d3b3396589",
+              "type": "item",
+              "text": "Dining Table",
+              "description": "Solid oak dining table with mortise and tenon joinery",
+              "price": ""
+            },
+            {
+              "id": "28a45915-328d-4f02-a25b-0de9c7798e27",
+              "type": "item",
+              "text": "Lounge Chair",
+              "description": "Walnut lounge chair with tapered legs",
+              "price": ""
+            },
+            {
+              "id": "c9268011-7d9b-42f2-aaf1-94b8dc6e8faf",
+              "type": "item",
+              "text": "Sideboard",
+              "description": "Ash sideboard with floating shelves",
+              "price": ""
+            },
+            {
+              "id": "d22690b7-e834-4d33-af71-a261829e9a05",
+              "type": "image",
+              "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1a/Kari_chair%2C_design_Kari_Asikainen.jpg/1280px-Kari_chair%2C_design_Kari_Asikainen.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+              "alt": "wooden chair design",
+              "credit": "Olavi Tokainen · CC BY-SA 4.0",
+              "creditUrl": "https://commons.wikimedia.org/wiki/File:Kari_chair,_design_Kari_Asikainen.jpg"
+            }
+          ],
+          "background": "#ffffff",
+          "imageHeight": 350,
+          "gap": 24,
+          "padding": 32,
+          "maxWidth": 1080
+        },
+        {
+          "id": "526f6d2f-bc7d-4590-bcd8-636c0c25788b",
+          "type": "contact",
+          "layout": "center",
+          "elements": [
+            {
+              "id": "4bafc0e1-2a53-4c21-a0aa-d58558c80d78",
+              "type": "heading",
+              "text": "Get in Touch"
+            },
+            {
+              "id": "4b6754d4-9d88-4e03-9660-d9f1753320e0",
+              "type": "text",
+              "text": "Discuss a commission or view the current collection"
+            }
+          ],
+          "background": "#faf9f7",
+          "gap": 24,
+          "padding": 64,
+          "maxWidth": 600,
+          "form": {
+            "align": "center",
+            "textAlign": "center",
+            "width": 480,
+            "nameLabel": "Name",
+            "emailLabel": "Email",
+            "messageLabel": "Message",
+            "buttonText": "Send enquiry"
+          }
+        }
+      ]
+    }
+  ]
+}

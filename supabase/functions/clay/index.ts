@@ -2,6 +2,9 @@ import { planEdit } from "./edit.js";
 import { createAiClient, AiError } from "./ai.js";
 import {
   compilePlan,
+  directionSchema,
+  withArtDirection,
+  normalizeDirection,
   planSchema,
   requirementsFromBrief,
   checkRequirements,
@@ -92,17 +95,37 @@ async function design(brief: any, onStage: any = async () => {}) {
       onAttempt: async () => onStage("designing", { attempts: ++attempts }),
     };
   const requirements = requirementsFromBrief(brief);
+  let direction;
+  try {
+    direction = (
+      await ai(directionSchema, brief, 1100, {
+        ...options,
+        totalMs: 22000,
+        attemptMs: 11000,
+      })
+    ).direction;
+    direction = normalizeDirection(direction);
+  } catch {
+    /* A brand-direction outage must not block a usable website. */
+  }
+
   const prompt =
     "Design a complete bespoke website for this small business. Respect the description and answers exactly. " +
     planSchema +
     " Mandatory constraints: " +
     JSON.stringify(requirements) +
-    ". Section counts apply to the entire website, not each page. Do not add extra hero sections to exceed the requested count.";
-  const r = await ai(prompt, brief, 3600, options);
+    ". Section counts apply to the entire website, not each page. Do not add extra hero sections to exceed the requested count. Brand direction is supplied in artDirection: use it consistently. You may omit repeated theme and brand objects so you can focus on complete pages, sections and content. Include a hero photograph unless the user excluded images. Keep body copy specific and concise. A one-page website should navigate to its relevant sections, not repeat its business name as its only navigation link.";
+  const r = await ai(prompt, { ...brief, artDirection: direction }, 4096, {
+    ...options,
+    totalMs: Math.max(10000, 105000 - (Date.now() - start)),
+  });
   await onStage("preparing");
   let model;
   try {
-    model = checkRequirements(compilePlan(r.plan), requirements);
+    model = checkRequirements(
+      compilePlan(withArtDirection(r.plan, direction, brief)),
+      requirements,
+    );
   } catch (error) {
     const remaining = 105000 - (Date.now() - start);
     if (remaining < 10000)
@@ -115,13 +138,17 @@ async function design(brief: any, onStage: any = async () => {}) {
         " Correct the structural problem in this plan without changing the user's requirements.",
       {
         ...brief,
+        artDirection: direction,
         plan: r.plan,
         problem: error instanceof Error ? error.message : "Invalid structure",
       },
-      3600,
+      4096,
       { ...options, totalMs: remaining },
     );
-    model = checkRequirements(compilePlan(corrected.plan), requirements);
+    model = checkRequirements(
+      compilePlan(withArtDirection(corrected.plan, direction, brief)),
+      requirements,
+    );
   }
   await onStage("photos");
   const warnings: string[] = [];
@@ -650,7 +677,15 @@ Deno.serve(async (req: Request) => {
                 : "invalid_design";
           console.error(
             "Generation failed",
-            JSON.stringify({ job: job.id, stage, code }),
+            JSON.stringify({
+              job: job.id,
+              stage,
+              code,
+              detail:
+                error instanceof Error
+                  ? error.message.slice(0, 180)
+                  : "unknown",
+            }),
           );
           const message =
             error instanceof AiError
@@ -663,7 +698,10 @@ Deno.serve(async (req: Request) => {
             .update({
               status: "failed",
               stage: "failed",
-              error_code: code,
+              error_code:
+                code === "invalid_design" && error instanceof Error
+                  ? code + ":" + error.message.slice(0, 160)
+                  : code,
               message,
               updated_at: new Date().toISOString(),
             })
@@ -701,6 +739,12 @@ Deno.serve(async (req: Request) => {
           prompt: b.prompt,
           selected: b.selected,
           pageId: b.pageId,
+          history: Array.isArray(b.history)
+            ? b.history.slice(-6).map((x: any) => ({
+                role: x.role === "clay" ? "clay" : "you",
+                text: String(x.text || "").slice(0, 1600),
+              }))
+            : [],
         });
       } catch (error) {
         if (error instanceof AiError) throw error;
@@ -713,7 +757,7 @@ Deno.serve(async (req: Request) => {
           422,
         );
       }
-      return reply(r, origin);
+      return reply({ ...r, baseRevision: site.revision }, origin);
     }
     if (b.type === "publish") {
       await limit("publish:" + user.id, 10, 3600);

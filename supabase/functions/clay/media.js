@@ -12,7 +12,7 @@ export async function findPhoto(query, fetcher = fetch, signal) {
     gsrnamespace: "6",
     gsrlimit: "8",
     prop: "imageinfo",
-    iiprop: "url|extmetadata",
+    iiprop: "url|extmetadata|size",
     iiurlwidth: "1200",
     format: "json",
   });
@@ -38,6 +38,11 @@ export async function findPhoto(query, fetcher = fetch, signal) {
       license = clean(meta.LicenseShortName?.value);
     if (
       !i ||
+      /logo|diagram|screenshot|poster|coat of arms|floor plan|flag|chart|icon|drawing|stamp/i.test(
+        page.title || "",
+      ) ||
+      (i.width && i.width < 640) ||
+      (i.height && i.height < 400) ||
       !/^(CC0|CC BY|Public domain)/i.test(license) ||
       !/^https:\/\//.test(i.thumburl || i.url)
     )

@@ -1,4 +1,18 @@
 import { canvasScript, canvasCss } from "./canvas.js";
+import {
+  fonts,
+  layouts,
+  themeKeys,
+  sectionKeys,
+  formKeys,
+  validateDesign,
+  validateSectionDesign,
+  validateForm,
+  validateBrand,
+  fontLink,
+  designCSS,
+} from "./design.js";
+export { fonts, layouts } from "./design.js";
 export const uid = () => crypto.randomUUID();
 export const esc = (v = "") =>
   String(v).replace(
@@ -17,7 +31,6 @@ export const safeImageUrl = (v = "") =>
     /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v))
     ? v
     : "";
-export const fonts = ["Inter", "Georgia", "Arial", "Trebuchet MS"];
 export const sectionTypes = [
   "hero",
   "text",
@@ -41,9 +54,23 @@ function validateStyle(style) {
           ? ["left", "center", "right"].includes(value)
           : key === "fontSize"
             ? Number.isInteger(value) && value >= 12 && value <= 100
-            : key === "padding"
-              ? Number.isInteger(value) && value >= 0 && value <= 100
-              : false;
+            : ["padding", "borderRadius", "marginTop", "marginBottom"].includes(
+                  key,
+                )
+              ? Number.isInteger(value) && value >= 0 && value <= 180
+              : key === "maxWidth"
+                ? Number.isInteger(value) && value >= 160 && value <= 1600
+                : key === "height"
+                  ? Number.isInteger(value) && value >= 100 && value <= 900
+                  : key === "objectFit"
+                    ? ["cover", "contain"].includes(value)
+                    : key === "lineHeight"
+                      ? typeof value === "number" && value >= 1 && value <= 2.5
+                      : key === "letterSpacing"
+                        ? typeof value === "number" &&
+                          value >= -4 &&
+                          value <= 12
+                        : false;
     if (!valid) throw Error("Choose a supported element style.");
   }
 }
@@ -51,7 +78,7 @@ const styleText = (style = {}) =>
   Object.entries(style)
     .map(
       ([key, value]) =>
-        `${key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}:${["fontSize", "padding"].includes(key) ? value + "px" : value};`,
+        `${key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}:${["fontSize", "padding", "borderRadius", "marginTop", "marginBottom", "maxWidth", "height", "letterSpacing"].includes(key) ? value + "px" : value};`,
     )
     .join("");
 function validatePhoto(node) {
@@ -83,7 +110,9 @@ export function validate(m) {
     !["comfortable", "compact", "spacious"].includes(m.theme.spacing)
   )
     throw Error("Choose a supported style.");
-  const ids = new Set(["navigation", "theme", "website"]);
+  validateDesign(m.theme);
+  validateBrand(m.brand);
+  const ids = new Set(["navigation", "theme", "website", "brand"]);
   const check = (id) => {
     if (typeof id !== "string" || !id || ids.has(id))
       throw Error("Each part of your website needs a unique identity.");
@@ -100,16 +129,16 @@ export function validate(m) {
       throw Error("This page could not be saved.");
     for (const s of p.sections) {
       check(s.id);
+      validateSectionDesign(s);
+      validateStyle(s.style);
+      if (s.type === "contact") check(s.id + ":form");
       if (
         !sectionTypes.includes(s.type) ||
         !Array.isArray(s.elements) ||
         s.elements.length > 60
       )
         throw Error("This section could not be saved.");
-      if (
-        s.layout &&
-        !["split", "center", "grid", "stack", "list"].includes(s.layout)
-      )
+      if (s.layout && !layouts.includes(s.layout))
         throw Error("Choose a supported layout.");
       if (s.background && !color(s.background))
         throw Error("Choose a valid colour.");
@@ -124,7 +153,18 @@ export function validate(m) {
       for (const e of s.elements) {
         check(e.id);
         validatePhoto(e);
-        if (!["heading", "text", "image", "button", "item"].includes(e.type))
+        if (
+          ![
+            "heading",
+            "text",
+            "image",
+            "button",
+            "item",
+            "eyebrow",
+            "quote",
+            "divider",
+          ].includes(e.type)
+        )
           throw Error("This content is not supported.");
         for (const k of [
           "text",
@@ -152,7 +192,12 @@ export function validate(m) {
     !Array.isArray(m.navigation) ||
     m.navigation.some(
       (n) =>
-        !m.pages.some((p) => p.id === n.pageId) || typeof n.label !== "string",
+        !m.pages.some((p) => p.id === n.pageId) ||
+        typeof n.label !== "string" ||
+        (n.sectionId != null &&
+          !m.pages
+            .find((p) => p.id === n.pageId)
+            ?.sections.some((s) => s.id === n.sectionId)),
     )
   )
     throw Error("Choose an existing page for the menu.");
@@ -180,6 +225,13 @@ export function locate(m, id) {
     if (p.id === id) return { node: p, page: p };
     for (const s of p.sections) {
       if (s.id === id) return { node: s, page: p, section: s };
+      if (s.type === "contact" && id === s.id + ":form")
+        return {
+          node: { align: s.layout === "center" ? "center" : "left", ...s.form },
+          page: p,
+          section: s,
+          form: true,
+        };
       for (const e of s.elements)
         if (e.id === id) return { node: e, page: p, section: s, element: e };
     }
@@ -188,6 +240,7 @@ export function locate(m, id) {
   if (content) return { node: content, content };
   if (id === "navigation") return { node: m.navigation };
   if (id === "theme") return { node: m.theme };
+  if (id === "brand") return { node: m.brand || {}, brand: true };
   return null;
 }
 export function applyOperations(model, operations) {
@@ -225,8 +278,31 @@ export function applyOperations(model, operations) {
       }
       case "update_section":
         if (!f?.section || f.element) throw Error("Choose a section.");
-        for (const k of ["layout", "background"])
-          if (o.value[k] != null) f.section[k] = o.value[k];
+        for (const [k, v] of Object.entries(o.value)) {
+          if (!sectionKeys.includes(k))
+            throw Error(
+              "Supported section settings: " + sectionKeys.join(", "),
+            );
+          f.section[k] = v;
+        }
+        break;
+      case "update_form": {
+        if (!f?.section || f.section.type !== "contact" || f.element)
+          throw Error("Choose a contact form using its form or section ID.");
+        validateForm(o.value);
+        f.section.form = { ...f.section.form, ...o.value };
+        break;
+      }
+      case "update_design":
+        for (const [key, value] of Object.entries(o.value)) {
+          if (!themeKeys.includes(key))
+            throw Error("Supported brand styling: " + themeKeys.join(", "));
+          m.theme[key] = value;
+        }
+        break;
+      case "update_brand":
+        m.brand = { ...m.brand, ...o.value };
+        validateBrand(m.brand);
         break;
       case "delete_section":
         if (!f?.section || f.element) throw Error("Choose a section first.");
@@ -308,7 +384,12 @@ export function applyOperations(model, operations) {
         }
         break;
       case "update_style":
-        if (!f?.element && !f?.content) throw Error("Choose an element.");
+        if (f?.form)
+          throw Error(
+            "Use update_form with align, textAlign and width to style a form.",
+          );
+        if (!f?.element && !f?.content && !f?.section)
+          throw Error("Choose an element or section.");
         validateStyle(o.value);
         f.node.style = { ...f.node.style, ...o.value };
         break;
@@ -320,7 +401,15 @@ export function applyOperations(model, operations) {
         break;
       }
       case "change_typography":
-        m.theme.font = o.value;
+        if (typeof o.value === "string") {
+          m.theme.font = o.value;
+          m.theme.headingFont = o.value;
+        } else
+          for (const [k, v] of Object.entries(o.value)) {
+            if (!["font", "headingFont", "bodyFont"].includes(k))
+              throw Error("Choose headingFont or bodyFont.");
+            m.theme[k] = v;
+          }
         break;
       case "change_spacing":
         m.theme.spacing = o.value;
@@ -384,6 +473,14 @@ export function applyOperations(model, operations) {
           throw Error(
             "This part was removed. Restore its page or website instead.",
           );
+        if (f.form) {
+          f.section.form = clone(o.value);
+          break;
+        }
+        if (f.brand) {
+          m.brand = clone(o.value);
+          break;
+        }
         Object.keys(f.node).forEach((k) => delete f.node[k]);
         Object.assign(f.node, clone(o.value));
         break;
@@ -545,6 +642,12 @@ export function renderDocument(
     switch (e.type) {
       case "heading":
         return `<${hero ? "h1" : "h2"}${a}>${esc(e.text).replace(/\n/g, "<br>")}</${hero ? "h1" : "h2"}>`;
+      case "eyebrow":
+        return `<p class="eyebrow"${a}>${esc(e.text)}</p>`;
+      case "quote":
+        return `<blockquote${a}>${esc(e.text)}</blockquote>`;
+      case "divider":
+        return `<hr class="divider"${a}>`;
       case "text":
         return `<p${a}>${esc(e.text).replace(/\n/g, "<br>")}</p>`;
       case "image":
@@ -576,16 +679,55 @@ export function renderDocument(
       "</div>"
     );
   };
+  const form = (section) => {
+    const f = section.form || {},
+      align =
+        f.align ||
+        (section.layout === "center" || section.contentAlign === "center"
+          ? "center"
+          : "left");
+    return `<form class="contact-form form-${align}" data-contact-form${attrs(section.id + ":form")} style="--form-width:${f.width || 560}px;--form-text-align:${f.textAlign || "left"}"><label>${esc(f.nameLabel || "Your name")}<input name="name" maxlength="150" required autocomplete="name"></label><label>${esc(f.emailLabel || "Email address")}<input name="email" type="email" maxlength="250" required autocomplete="email"></label><label>${esc(f.messageLabel || "How can we help?")}<textarea name="message" maxlength="5000" required></textarea></label><input name="website" tabindex="-1" autocomplete="off" class="honey" aria-hidden="true"><button class="button" type="submit">${esc(f.buttonText || "Send message")} <span aria-hidden="true">↗</span></button><p role="status" data-form-status></p></form>`;
+  };
   const sections = p.sections
-    .map(
-      (s, i) =>
-        `<section id="${esc(s.id)}" class="section ${esc(s.type)} ${["split", "center", "grid", "stack", "list"].includes(s.layout) ? s.layout : "stack"}"${attrs(s.id)} style="${s.background ? `background:${s.background};color:${readable(s.background, m.theme.text)};` : ""}--order:${i}"><div class="inside">${s.elements
-          .filter((e) => s.type !== "products" || e.type !== "item")
+    .map((s, i) => {
+      const copy = s.elements.filter(
+        (e) =>
+          e.type !== "image" && !(s.type === "products" && e.type === "item"),
+      );
+      const media = s.elements.filter((e) => e.type === "image");
+      const grouped = ["split", "editorial", "cover", "center"].includes(
+        s.layout,
+      );
+      const mediaLeft =
+        s.mediaPosition === "left" ||
+        (!s.mediaPosition && s.elements[0]?.type === "image");
+      let inner = grouped
+        ? `<div class="section-copy">${copy.map((e) => element(e, s.type === "hero")).join("")}</div>${media.length ? `<div class="section-media">${media.map((e) => element(e, s.type === "hero")).join("")}</div>` : ""}`
+        : s.elements
+            .filter((e) => s.type !== "products" || e.type !== "item")
+            .map((e) => element(e, s.type === "hero"))
+            .join("");
+      if (
+        grouped &&
+        !media.length &&
+        s.type !== "contact" &&
+        ["split", "editorial"].includes(s.layout)
+      ) {
+        inner = `<div class="section-heading">${copy
+          .filter((e) => ["heading", "eyebrow"].includes(e.type))
           .map((e) => element(e, s.type === "hero"))
-          .join(
-            "",
-          )}${s.type === "products" ? catalogue(s) : ""}${s.type === "contact" ? `<form id="contact"><label>Your name<input name="name" maxlength="150" required autocomplete="name"></label><label>Email address<input name="email" type="email" maxlength="250" required autocomplete="email"></label><label>How can we help?<textarea name="message" maxlength="5000" required></textarea></label><input name="website" tabindex="-1" autocomplete="off" class="honey" aria-hidden="true"><button class="button">Send message</button><p role="status" id="form-status"></p></form>` : ""}</div></section>`,
-    )
+          .join("")}</div><div class="section-copy">${copy
+          .filter((e) => !["heading", "eyebrow"].includes(e.type))
+          .map((e) => element(e, s.type === "hero"))
+          .join("")}</div>`;
+      }
+      if (s.type === "products") inner += catalogue(s);
+      if (s.type === "contact") inner += form(s);
+      const custom =
+        styleText(s.style) +
+        `${s.background ? "background:" + s.background + ";color:" + readable(s.background, m.theme.text) + ";" : ""}--order:${i};${s.imageHeight ? "--image-height:" + s.imageHeight + "px;" : ""}${s.gap ? "--section-gap:" + s.gap + "px;" : ""}${s.padding != null ? "--section-padding:" + s.padding + "px;" : ""}${s.maxWidth ? "--section-width:" + s.maxWidth + "px;" : ""}${s.contentAlign ? "--section-align:" + s.contentAlign + ";" : ""}`;
+      return `<section id="${esc(s.id)}" class="section ${s.type} ${s.layout || "stack"} ${mediaLeft ? "media-left" : ""}"${attrs(s.id)} style="${custom}"><div class="inside">${inner}</div></section>`;
+    })
     .join("");
   const css = `*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:${m.theme.background};color:${readable(m.theme.background, m.theme.text)};font-family:'${m.theme.font}',sans-serif;font-size:16px;line-height:1.65}a{color:inherit;text-decoration:none}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid ${m.theme.accent};outline-offset:5px}header{max-width:1280px;margin:auto;padding:28px 6%;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{font-size:28px;font-weight:600;letter-spacing:-1px}nav{display:flex;gap:26px;flex-wrap:wrap;font-family:Inter,Arial,sans-serif;font-size:14px}h1{font-size:clamp(40px,5.5vw,78px);line-height:1.06;font-weight:400;letter-spacing:-.04em;margin:0 0 28px}h2{font-size:clamp(28px,3vw,44px);line-height:1.2;font-weight:400;letter-spacing:-.025em;margin:0 0 24px}h3{font-size:24px;line-height:1.3}p{max-width:620px;font-family:Inter,Arial,sans-serif;line-height:1.8;opacity:1}section{padding:${space} 6%}.inside{max-width:1120px;margin:auto}.split .inside{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}.hero img{width:100%;height:520px;object-fit:cover}.button{display:inline-flex;gap:24px;justify-content:center;align-items:center;background:${m.theme.accent};color:${readable(m.theme.accent, "#ffffff")};padding:14px 23px;border:0;border-radius:3px;font:500 15px Inter,Arial,sans-serif;cursor:pointer;margin-top:16px}.center{text-align:center}.center p{margin:20px auto}.gallery .inside,.catalogue,.grid .inside{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:28px}.gallery h2,.grid h2{grid-column:1/-1}.photo-placeholder{min-height:260px;display:grid;place-items:center;background:#8881;border:1px dashed #8886;padding:24px;text-align:center;font:15px Inter,Arial,sans-serif}figure{margin:0;min-width:0}figcaption{font:12px Inter,Arial,sans-serif;line-height:1.5;margin-top:8px}figcaption a{text-decoration:underline}img{max-width:100%;object-fit:cover}.gallery img{height:320px;width:100%}article{padding:24px;border:1px solid currentColor}footer{padding:32px 6%;border-top:1px solid #8884;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font:14px Inter,Arial,sans-serif}form{max-width:560px;text-align:left}label{display:block;font:15px Inter,Arial,sans-serif;margin:20px 0}input,textarea{width:100%;padding:14px;border:1px solid #8888;background:transparent;color:inherit;font:inherit;margin-top:8px;border-radius:4px}textarea{min-height:120px}.honey{position:absolute;left:-9999px}[data-clay-id]{cursor:pointer}[data-clay-id]:hover{outline:2px solid #748da7;outline-offset:4px}[data-clay-id].selected{outline:2px solid #3f6791;outline-offset:4px}${progressive ? "section{animation:appear .7s both;animation-delay:calc(var(--order)*.32s)}@keyframes appear{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}" : ""}@media(max-width:650px){header{align-items:flex-start}.brand{font-size:24px}nav{gap:12px}.split .inside{grid-template-columns:1fr;gap:32px}section{padding:48px 6%}.hero img{height:360px}h1{font-size:44px}}@media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}`;
   const layoutCss = `.inside>*{min-width:0}.hero.split .inside{display:block;column-count:2;column-gap:64px}.hero.split .inside>*{break-inside:avoid}.hero.split figure:not(:first-child){break-before:column}.catalogue{grid-column:1/-1;width:100%;margin-top:28px}.item-card{border:1px solid #8883;border-radius:12px;overflow:hidden;padding:0;background:#ffffff08;text-align:left}.item-details{padding:24px}.item-details h3{margin:0 0 12px}.item-details p{margin:0 0 16px}.item-card[style*="font-family"] p{font-family:inherit}.item-card[style*="font-size"] h3{font-size:1.4em}.item-card[style*="font-size"] p,.item-card[style*="font-size"] strong{font-size:inherit}.item-photo{margin:0}.item-photo img{display:block;width:100%;height:220px;object-fit:cover}.item-photo figcaption{padding:6px 12px;font-size:11px}.list .inside{display:flex;flex-direction:column;gap:24px}.list .catalogue{display:flex;flex-direction:column;gap:24px;margin-top:0}.list .item-card{width:100%}.list .has-photo{display:grid;grid-template-columns:minmax(160px,30%) 1fr;align-items:center}.list .item-photo img{height:220px}.stack .inside>*+*{margin-top:24px}@media(max-width:650px){.hero.split .inside{column-count:1}.list .has-photo{grid-template-columns:1fr}.item-photo img{height:220px}.catalogue{grid-template-columns:1fr}}`;
@@ -597,8 +739,21 @@ export function renderDocument(
     ? preview
       ? canvasScript(true)
       : canvasScript(false, { selected, scrollY })
-    : `const cfg=${payload};const send=(type,data)=>fetch(cfg.endpoint,{method:'POST',headers:{'Content-Type':'application/json','apikey':cfg.publicKey},body:JSON.stringify({type,siteId:cfg.siteId,...data})});document.querySelector('#contact')?.addEventListener('submit',async e=>{e.preventDefault();const status=document.querySelector('#form-status'),button=e.target.querySelector('button');if(!cfg.endpoint){status.textContent='Online messages are not connected yet. Please contact us directly.';return}button.disabled=true;status.textContent='Sending…';try{const r=await send('contact',{...Object.fromEntries(new FormData(e.target))});if(!r.ok)throw Error();e.target.reset();status.textContent='Thank you. Your message has been sent.'}catch{status.textContent='Your message could not be sent. Please try again.'}finally{button.disabled=false}});if(cfg.endpoint&&navigator.doNotTrack!=='1'){let visitor;try{visitor=localStorage.getItem('clay-visitor');if(!visitor){visitor=crypto.randomUUID();localStorage.setItem('clay-visitor',visitor)}}catch{visitor=crypto.randomUUID()}const eventId=crypto.randomUUID(),started=Date.now();send('visit',{visitor,eventId,path:location.pathname,seconds:0}).catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')fetch(cfg.endpoint,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':cfg.publicKey},body:JSON.stringify({type:'visit',siteId:cfg.siteId,visitor,eventId,path:location.pathname,seconds:Math.min(1800,Math.round((Date.now()-started)/1000))})}).catch(()=>{})})}if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)} — ${esc(m.name)}</title><meta name="description" content="${esc(m.description)}"><meta name="theme-color" content="${m.theme.background}"><link rel="manifest" href="./manifest.webmanifest"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><style>${css}${layoutCss}${editing && !preview ? canvasCss : ""}</style></head><body><header${attrs("navigation")}><a class="brand" href="./${m.pages[0].slug}.html">${esc(m.name)}</a><nav aria-label="Main navigation">${m.navigation.map((n) => `<a data-page="${esc(n.pageId)}" href="./${esc(m.pages.find((p) => p.id === n.pageId).slug)}.html">${esc(n.label)}</a>`).join("")}</nav></header><main>${sections}</main><footer><span>© ${new Date().getFullYear()} ${esc(m.name)}</span><span>${esc([m.address, m.phone, m.email].filter(Boolean).join(" · "))}</span></footer><script>${script}</script></body></html>`;
+    : `const cfg=${payload};const send=(type,data)=>fetch(cfg.endpoint,{method:'POST',headers:{'Content-Type':'application/json','apikey':cfg.publicKey},body:JSON.stringify({type,siteId:cfg.siteId,...data})});document.querySelectorAll('[data-contact-form]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const status=form.querySelector('[data-form-status]'),button=form.querySelector('button');if(!cfg.endpoint){status.textContent='Online messages are not connected yet. Please contact us directly.';return}button.disabled=true;status.textContent='Sending…';try{const r=await send('contact',{...Object.fromEntries(new FormData(e.target))});if(!r.ok)throw Error();e.target.reset();status.textContent='Thank you. Your message has been sent.'}catch{status.textContent='Your message could not be sent. Please try again.'}finally{button.disabled=false}}));if(cfg.endpoint&&navigator.doNotTrack!=='1'){let visitor;try{visitor=localStorage.getItem('clay-visitor');if(!visitor){visitor=crypto.randomUUID();localStorage.setItem('clay-visitor',visitor)}}catch{visitor=crypto.randomUUID()}const eventId=crypto.randomUUID(),started=Date.now();send('visit',{visitor,eventId,path:location.pathname,seconds:0}).catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')fetch(cfg.endpoint,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':cfg.publicKey},body:JSON.stringify({type:'visit',siteId:cfg.siteId,visitor,eventId,path:location.pathname,seconds:Math.min(1800,Math.round((Date.now()-started)/1000))})}).catch(()=>{})})}if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})`;
+  const motionScript =
+    m.theme.motion !== "none" && (!editing || preview)
+      ? `if(!matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window){document.documentElement.classList.add('motion-ready');const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('reveal-visible');entry.target.classList.remove('reveal-pending');observer.unobserve(entry.target)}}),{threshold:.06});document.querySelectorAll('main>section:not(:first-child)').forEach(section=>{section.classList.add('reveal-pending');observer.observe(section)});setTimeout(()=>document.querySelectorAll('.reveal-pending').forEach(n=>{n.classList.remove('reveal-pending');n.classList.add('reveal-visible')}),4000)}`
+      : "";
+  const b = m.brand || {},
+    mark = (b.wordmark || m.name)
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((x) => x[0])
+      .join("")
+      .toUpperCase();
+  const identity = `${safeImageUrl(b.logoSrc) ? '<img src="' + esc(safeImageUrl(b.logoSrc)) + '" alt="' + esc(b.logoAlt || m.name) + '">' : b.showMark ? '<span class="brand-mark" aria-hidden="true">' + esc(mark) + "</span>" : ""}<span class="brand-signature">${esc(b.wordmark || m.name)}${b.tagline ? "<small>" + esc(b.tagline) + "</small>" : ""}</span>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)} — ${esc(m.name)}</title><meta name="description" content="${esc(m.description)}"><meta name="theme-color" content="${m.theme.background}"><link rel="manifest" href="./manifest.webmanifest"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="${esc(fontLink(m))}" rel="stylesheet"><style>${css}${layoutCss}${designCSS(m, editing && !preview, readable)}${editing && !preview ? canvasCss : ""}</style></head><body><header${attrs("navigation")}><a class="brand" href="./${m.pages[0].slug}.html">${identity}</a><nav aria-label="Main navigation">${m.navigation.map((n) => `<a data-page="${esc(n.pageId)}" ${n.sectionId ? `data-section="${esc(n.sectionId)}"` : ""} href="./${esc(m.pages.find((p) => p.id === n.pageId).slug)}.html${n.sectionId ? "#" + esc(n.sectionId) : ""}">${esc(n.label)}</a>`).join("")}</nav></header><main>${sections}</main><footer><div class="footer-identity"><strong>${esc(b.wordmark || m.name)}</strong>${b.tagline ? `<small>${esc(b.tagline)}</small>` : ""}<small>© ${new Date().getFullYear()} ${esc(m.name)}</small></div><span>${esc([m.address, m.phone, m.email].filter(Boolean).join(" · "))}</span></footer><script>${script};${motionScript}</script></body></html>`;
 }
 export function exportFiles(m, options = {}) {
   const files = {};
@@ -645,6 +800,9 @@ export function prepareGeneratedModel(input) {
       return [
         {
           pageId: p.id,
+          ...(n.sectionId && p.sections.some((s) => s.id === n.sectionId)
+            ? { sectionId: n.sectionId }
+            : {}),
           label: p.id === n.pageId ? String(n.label || p.title) : p.title,
         },
       ];

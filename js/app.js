@@ -35,6 +35,8 @@ const state = {
   description: "",
   question: 0,
   messages: [],
+  clarification: null,
+  editing: false,
   view: "",
   profileTab: "profile",
   avatarUrl: "",
@@ -86,6 +88,7 @@ function landing() {
   state.answers = [];
   state.questions = [];
   state.messages = [];
+  state.clarification = null;
   state.demo = false;
   state.site = null;
   state.sites = [];
@@ -416,6 +419,13 @@ function openSite(site, progressive = false) {
   state.undo = [];
   state.redo = [];
   state.messages = [];
+  try {
+    state.clarification = JSON.parse(
+      sessionStorage.getItem(editContextKey()) || "null",
+    );
+  } catch {
+    state.clarification = null;
+  }
   workspace(progressive);
 }
 function workspace(progressive = false) {
@@ -428,69 +438,164 @@ function workspace(progressive = false) {
     header("website") +
     `<main id="main" class="workspace ${state.preview ? "previewing" : ""}"><div class="workspace-bar"><div class="website-title">${btn("pages", esc(m.name) + " <span>⌄</span>", "text-button")}<span id="save-status" role="status" aria-live="polite">${statusLabel()}</span></div><div class="device-controls" aria-label="Preview size">${btn("desktop", icon("desktop"), "icon-button " + (state.device === "desktop" ? "active" : ""), 'aria-label="Desktop preview"')}${btn("mobile", icon("mobile"), "icon-button " + (state.device === "mobile" ? "active" : ""), 'aria-label="Mobile preview"')}</div><div class="workspace-actions">${btn("history", "Previous versions", "text-button")}${btn("preview", state.preview ? "Back to editing" : "Preview", "outline")}${btn("publish", "Publish " + icon("arrow"), "primary")}</div></div><div class="canvas-surround"><div class="canvas-top"><div><span class="workspace-location">Website</span><span aria-hidden="true">/</span><span id="page-name">${esc(m.pages.find((p) => p.id === state.page)?.title || "Home")}</span><span> / </span>${btn("pages", "Pages", "text-button")}</div><div>${btn("undo", icon("undo"), "icon-button", 'aria-label="Undo" ' + (!state.undo.length ? "disabled" : ""))}${btn("redo", icon("redo"), "icon-button", 'aria-label="Redo" ' + (!state.redo.length ? "disabled" : ""))}${btn("tools", "Website tools", "text-button")}</div></div><div class="canvas ${state.device === "mobile" ? "mobile" : ""}"><iframe id="canvas" title="Your website" sandbox="allow-scripts"></iframe></div></div>${state.preview ? "" : `<div class="editor-dock"><div class="conversation-heading"><h2>Make it yours.</h2><p>Small changes. New possibilities.</p></div><div class="conversation" id="conversation" aria-live="polite">${state.messages.length ? state.messages.map((x) => `<p class="message ${x.role}">${esc(x.text)}</p>`).join("") : `<p class="message">Your website is ready to shape. Select anything on the right, or describe a change below.</p><div class="conversation-tools">${btn("pages", "Manage pages", "text-button")}${btn("sections", "Organize your content", "text-button")}${btn("tools", "Explore editing tools", "text-button")}</div>`}</div><div id="selection" class="selection-context"><span>Select a section or text to edit it.</span>${btn("sections", "Arrange sections", "text-button")}</div><form id="edit-form"><label class="sr-only" for="edit-prompt">Ask Clay to change anything</label><textarea id="edit-prompt" rows="1" maxlength="4000" placeholder="Ask Clay to change anything…" required></textarea><button class="send" aria-label="Apply change">${icon("send")}</button></form><div class="dock-footer"><span>${state.demo ? "Example website · try direct editing" : "Your ideas, brought to life."}</span><span>Hover to edit · drag ⠿ to rearrange</span></div></div>`}</main>`;
   renderCanvas(progressive);
-  if ($("#edit-form"))
-    $("#edit-form").onsubmit = async (e) => {
-      e.preventDefault();
-      const prompt = $("#edit-prompt").value;
-      if (
-        /^(make (it|the website|this) better|improve (it|this|the website))[.!?]*$/i.test(
-          prompt.trim(),
-        )
-      ) {
-        showPanel(
-          "What would you like to improve?",
-          `<p>Choose a starting point, or describe your idea below.</p><div class="answer-options">${["Visual style", "Colours", "Typography", "Images", "Layout", "Content", "Navigation"].map((x) => btn("clarify", x, "chip", `data-value="${x}"`)).join("")}</div>`,
-        );
-        return;
-      }
-      if (state.demo) {
-        toast(
-          "AI editing needs a connected account. You can explore direct editing in this example.",
-        );
-        return;
-      }
-      state.messages.push({ role: "you", text: prompt });
-      $("#conversation").insertAdjacentHTML(
-        "beforeend",
-        `<p class="message you">${esc(prompt)}</p>`,
+  if ($("#edit-form")) {
+    const input = $("#edit-prompt");
+    if (state.clarification) {
+      input.placeholder = "Reply to Clay’s question…";
+      input.value = state.clarification.answerDraft || "";
+      input.oninput = () => {
+        if (state.clarification)
+          rememberClarification({
+            ...state.clarification,
+            answerDraft: input.value,
+          });
+      };
+      $("#edit-form").insertAdjacentHTML(
+        "beforebegin",
+        `<div class="pending-edit"><span>${esc(state.clarification.question)}</span>${btn("resume-edit", "Answer question", "text-button")}${btn("new-edit", "Start a different change", "text-button")}</div>`,
       );
-      await busy(e.submitter, async () => {
-        const r = await api.invoke("edit", {
-          siteId: state.site.id,
-          prompt,
-          selected: state.selected,
-          pageId: state.page,
-          history: state.messages.slice(-7, -1),
-        });
-        if (r.question) {
-          state.messages.push({ role: "clay", text: r.question });
-          $("#conversation").insertAdjacentHTML(
-            "beforeend",
-            `<p class="message clay">${esc(r.question)}</p>`,
-          );
-          showPanel("A little more detail", `<p>${esc(r.question)}</p>`);
-          return;
-        }
-        const ops = r.operations || [];
-        const publish = ops.some((o) => o.type === "publish_website");
-        await change(
-          ops.filter((o) => o.type !== "publish_website"),
-          r.summary || prompt,
-        );
-        state.messages.push({
-          role: "clay",
-          text: r.summary || "Your website has been updated.",
-        });
-        $("#conversation")?.insertAdjacentHTML(
-          "beforeend",
-          `<p class="message clay">${esc(r.summary || "Your website has been updated.")}</p>`,
-        );
-        $("#edit-prompt").value = "";
-        if (publish) await publishSite();
-        else toast(r.summary || "Your website has been updated.");
-      });
+    }
+    $("#edit-form").onsubmit = (e) => {
+      e.preventDefault();
+      submitEdit(input.value, e.submitter);
     };
+  }
 }
+function editContextKey() {
+  return `clay-edit:${state.user?.id || "example"}:${state.site?.id}`;
+}
+function rememberClarification(value) {
+  state.clarification = value;
+  try {
+    if (value) sessionStorage.setItem(editContextKey(), JSON.stringify(value));
+    else sessionStorage.removeItem(editContextKey());
+  } catch {}
+}
+function askEditQuestion() {
+  if (!state.clarification) return;
+  showPanel(
+    "A little more detail",
+    `<p id="clarification-question">${esc(state.clarification.question)}</p><form id="clarification-form" class="stack-form"><label for="clarification-answer">Your answer</label><textarea id="clarification-answer" rows="4" maxlength="4000" placeholder="Describe it in your own words…" required>${esc($("#edit-prompt")?.value || "")}</textarea><p id="clarification-status" role="status" aria-live="polite"></p><button class="primary">Apply my changes ${icon("send")}</button>${btn("new-edit", "Start a different change", "text-button")}</form>`,
+  );
+  $("#clarification-answer").oninput = (e) => {
+    if ($("#edit-prompt")) $("#edit-prompt").value = e.target.value;
+    rememberClarification({
+      ...state.clarification,
+      answerDraft: e.target.value,
+    });
+  };
+  $("#clarification-form").onsubmit = (e) => {
+    e.preventDefault();
+    submitEdit($("#clarification-answer").value, e.submitter);
+  };
+  $("#clarification-answer").focus();
+}
+async function submitEdit(value, button) {
+  const prompt = value.trim();
+  if (!prompt || state.editing) return;
+  if (state.clarification)
+    rememberClarification({ ...state.clarification, answerDraft: prompt });
+  if (
+    !state.clarification &&
+    /^(make (it|the website|this) better|improve (it|this|the website))[.!?]*$/i.test(
+      prompt,
+    )
+  ) {
+    showPanel(
+      "What would you like to improve?",
+      `<p>Choose a starting point, or describe your idea below.</p><div class="answer-options">${["Visual style", "Colours", "Typography", "Images", "Layout", "Content", "Navigation"].map((x) => btn("clarify", x, "chip", `data-value="${x}"`)).join("")}</div>`,
+    );
+    return;
+  }
+  if (state.demo) {
+    toast(
+      "AI editing needs a connected account. You can explore direct editing in this example.",
+    );
+    return;
+  }
+  state.editing = true;
+  const siteId = state.site.id,
+    revision = state.site.revision;
+  const history = state.messages.slice(-6);
+  state.messages.push({ role: "you", text: prompt });
+  $("#conversation")?.insertAdjacentHTML(
+    "beforeend",
+    `<p class="message you">${esc(prompt)}</p>`,
+  );
+  if ($("#clarification-status"))
+    $("#clarification-status").textContent = "Applying your answer…";
+  await busy(button, async () => {
+    try {
+      const r = await api.invoke("edit", {
+        siteId,
+        prompt,
+        selected: state.selected,
+        pageId: state.page,
+        history,
+        clarification: state.clarification || false,
+      });
+      if (
+        state.site?.id !== siteId ||
+        state.site.revision !== revision ||
+        (r.baseRevision != null && r.baseRevision !== revision)
+      )
+        throw Error(
+          "Your website changed while Clay was preparing this edit. Your request is still here; please try it again against the latest version.",
+        );
+      if (r.question) {
+        rememberClarification(
+          r.clarification || {
+            request: prompt,
+            question: r.question,
+            selected: state.selected,
+            pageId: state.page,
+            replies: [],
+          },
+        );
+        state.messages.push({ role: "clay", text: r.question });
+        $("#edit-prompt").value = "";
+        workspace();
+        askEditQuestion();
+        return;
+      }
+      const ops = r.operations || [];
+      if (!ops.length)
+        throw Error(
+          "Clay returned an incomplete change. Your request is still here; please try again.",
+        );
+      const publish = ops.some((o) => o.type === "publish_website");
+      await change(
+        ops.filter((o) => o.type !== "publish_website"),
+        r.summary || prompt,
+      );
+      rememberClarification(null);
+      $(".pending-edit")?.remove();
+      state.messages.push({
+        role: "clay",
+        text: r.summary || "Your website has been updated.",
+      });
+      $("#conversation")?.insertAdjacentHTML(
+        "beforeend",
+        `<p class="message clay">${esc(r.summary || "Your website has been updated.")}</p>`,
+      );
+      if ($("#edit-prompt")) {
+        $("#edit-prompt").value = "";
+        $("#edit-prompt").oninput = null;
+        $("#edit-prompt").placeholder = "Ask Clay to change anything…";
+      }
+      if (panel.open && $("#clarification-form")) panel.close();
+      if (publish) await publishSite();
+      else toast(r.summary || "Your website has been updated.");
+    } catch (error) {
+      if ($("#clarification-status"))
+        $("#clarification-status").textContent = errorText(error);
+      throw error;
+    } finally {
+      state.editing = false;
+    }
+  });
+}
+
 function renderCanvas(progressive = false) {
   const canvas = $("#canvas");
   canvas.dataset.revision = String(state.site.revision || 0);
@@ -1374,6 +1479,16 @@ async function run(fn) {
   }
 }
 const actions = {
+  "resume-edit": () => {
+    if (!state.editing) askEditQuestion();
+  },
+  "new-edit": () => {
+    if (state.editing) return;
+    rememberClarification(null);
+    if (panel.open) panel.close();
+    workspace();
+    $("#edit-prompt")?.focus();
+  },
   showcase: (button) => {
     const examples = [
       {

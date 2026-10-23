@@ -1,4 +1,4 @@
-const CACHE = "clay-shell-v6";
+const CACHE = "clay-shell-v7";
 const ROOT = new URL("./", self.location).href;
 const FILES = [
   "",

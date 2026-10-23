@@ -739,6 +739,7 @@ Deno.serve(async (req: Request) => {
           prompt: b.prompt,
           selected: b.selected,
           pageId: b.pageId,
+          clarification: b.clarification,
           history: Array.isArray(b.history)
             ? b.history.slice(-6).map((x: any) => ({
                 role: x.role === "clay" ? "clay" : "you",

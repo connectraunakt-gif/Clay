@@ -3,7 +3,14 @@ import { fonts, layouts, themeKeys, sectionKeys, formKeys } from "./design.js";
 import { applyOperations, locate } from "./model.js";
 import { normalizeOperations } from "./actions.js";
 import { resolveImages } from "./media.js";
+import {
+  editContext,
+  technicalQuestion,
+  clarificationReply,
+  responseQuestion,
+} from "./clarification.js";
 export const editInstructions = `Edit the supplied website with small, precise structured operations. Return JSON {summary:string,operations:[...]}, or {question:string} if the request is too vague. Preserve IDs and unrelated content. Use the selected element as context, unless the user requests the whole page/site. Never return HTML, CSS or JavaScript. Never replace the whole website for a small change.
+The user is a non-technical business owner. Resolve all IDs yourself using website and editableTargets. NEVER ask the user for IDs, element references, schemas, operation names, or technical values. Page names, visible words, and ordinary descriptions are sufficient to find targets. Ask a short, specific question only when a real business/design preference is missing. When waiting for an answer, return {question:string}; do not put questions in summary with empty operations. Do not ask what changes are wanted when the user has already described them. clarification contains the original request and answers to your questions: treat these as ONE request, apply the supplied answers immediately, and give the latest answer priority where it revises an earlier detail. recentConversation is background, not a list of edits to repeat. For a list of pages and desired contents, interpret it as a request to add/update those contents on the named pages, reusing existing sections and preserving anything not mentioned. Apply supported parts and explain unavailable features; do not ask the user to translate their request into operations.
 Operations (every object has a type field):
 edit_text {target:elementId,value:string}; update_element {target:elementId,value:{text?,description?,price?,href?,alt?,imageQuery?}}; replace_image {target:elementOrContentId,value:{imageQuery,alt}}; create_element {target:sectionId,value:{type:'heading'|'text'|'button'|'image'|'item',text?,description?,price?,href?,imageQuery?,alt?}}; delete_element {target}; move_element {target:elementId,sectionId,index};
 update_style {target:elementOrContentId,value:{color?:'#rrggbb',background?:'#rrggbb',fontSize?:integer12to100,fontFamily?:supportedFont,textAlign?:'left'|'center'|'right',padding?:integer0to100}};
@@ -20,14 +27,29 @@ export async function planEdit({
   selected,
   pageId,
   history = [],
+  clarification,
   images = resolveImages,
 }) {
-  const quick = resolveAlignment({ model, prompt, selected, pageId });
+  const context = editContext({
+    prompt,
+    selected,
+    pageId,
+    clarification,
+    history,
+  });
+  prompt = context.instruction;
+  selected = context.selected;
+  pageId = context.pageId;
+  const quick =
+    !context.replies.length &&
+    resolveAlignment({ model, prompt, selected, pageId });
   if (quick) return quick;
   const started = Date.now();
   const requiredOperations = literalOperations({
     model,
-    prompt,
+    prompt: [context.request, ...context.replies.map((x) => x.answer)].join(
+      "\n\n",
+    ),
     selected,
     pageId,
   });
@@ -76,6 +98,9 @@ export async function planEdit({
     pageId,
     selected: locate(model, selected) ? selected : null,
     instruction: prompt,
+    clarification: context.replies.length
+      ? { originalRequest: context.request, replies: context.replies }
+      : null,
     requiredOperations,
     recentConversation: history,
     visibleCards: model.pages
@@ -104,7 +129,7 @@ export async function planEdit({
       ),
   };
   let result, operations, reason;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     result = await ai(
       editInstructions,
       {
@@ -121,8 +146,23 @@ export async function planEdit({
       4096,
       { totalMs: Math.max(1000, 105000 - (Date.now() - started)) },
     );
-    if (result.question)
-      return { question: String(result.question).slice(0, 1000) };
+    const question = responseQuestion(result);
+    if (question) {
+      const repeated = context.replies.some(
+        (x) => x.question.toLowerCase() === question.toLowerCase(),
+      );
+      if (
+        (technicalQuestion(question) ||
+          repeated ||
+          (context.replies.length && attempt === 0)) &&
+        attempt < 2
+      ) {
+        reason =
+          "This is an answer to your previous question. Read originalRequest and all clarification replies together. Do not ask the user to identify internal targets or repeat an answered question, even with different wording. You have the complete website and editableTargets. Resolve the targets yourself from the page names and visible text. Apply the supported changes described in instruction and clarification. Return validated operations. Only if an essential business fact or preference is still missing, ask a NEW specific plain-language question about that fact.";
+        continue;
+      }
+      return clarificationReply(context, question);
+    }
     try {
       operations = normalizeOperations(result.operations);
       // Older designs can contain both item elements and catalogue entries.
@@ -160,7 +200,10 @@ export async function planEdit({
             : o,
         );
       const changed = applyOperations(model, candidate);
-      const exactText = prompt.match(/exactly\s*:?\s*["“]([^"”]+)["”]/i)?.[1];
+      const latestAnswer = context.replies.at(-1)?.answer || prompt;
+      const exactText = [
+        ...latestAnswer.matchAll(/exactly\s*:?\s*["“]([^"”]+)["”]/gi),
+      ].at(-1)?.[1];
       if (
         exactText &&
         locate(model, selected)?.element &&
@@ -178,10 +221,7 @@ export async function planEdit({
         " Use exact IDs from editableTargets and only fields listed in capabilities. Forms use update_form; section layout uses update_section.";
     }
   }
-  if (reason)
-    throw Error(
-      "Clay could not prepare a safe edit. Try one change at a time; your saved website is unchanged.",
-    );
+  if (reason) throw Error("Edit validation failed: " + reason);
   const warnings = [];
   await images(operations, fetch, { strict: false, warnings });
   // A failed search must not erase an existing working photograph.

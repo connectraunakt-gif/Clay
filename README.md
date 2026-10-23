@@ -80,3 +80,5 @@ The configured AI service uses NVIDIA's hosted `nvidia/nemotron-3.5-lightning-30
 Clay opens immediately without a splash screen. Home provides shortcuts and a small preview; the full editor is available only in Website. Profile supports name, business type, location and a private profile picture. Design changes and their rationale are documented in `docs/design-changes-2026-10-23.md`.
 
 Generation reliability changes and measured tests are documented in `docs/generation-reliability-2026-10-23.md`.
+
+AI clarification answers retain the original request and selected page/element. Pending answers can be retried from the dialog and survive a reload in the same tab. Clarification handling and its browser/live tests are documented in `docs/clarification-reliability-2026-10-23.md`.

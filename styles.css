@@ -2105,6 +2105,20 @@ dialog.expanded {
 .editor-dock .send {
   flex-shrink: 0;
 }
+.pending-edit {
+  padding: 10px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.pending-edit span {
+  display: block;
+  max-height: 72px;
+  overflow: auto;
+}
+.pending-edit .text-button {
+  font-size: 12px;
+  padding: 6px 4px;
+}
 .dock-footer {
   font-size: 11px;
   margin-top: 10px;

@@ -9,6 +9,7 @@ import {
   renderDocument,
   exportFiles,
   fonts,
+  safeImageUrl,
 } from "./model.js";
 import * as api from "./api.js";
 const $ = (s) => document.querySelector(s),
@@ -33,6 +34,9 @@ const state = {
   description: "",
   question: 0,
   messages: [],
+  view: "",
+  profileTab: "profile",
+  avatarUrl: "",
 };
 const icons = {
   arrow: "↗",
@@ -66,9 +70,17 @@ function theme() {
 }
 theme();
 function header(active = "") {
-  return `<header class="app-header">${logo()}${state.user || state.demo ? `<nav aria-label="Main navigation">${["Home", "Website", "Profile"].map((n) => btn(n.toLowerCase(), n, active === n.toLowerCase() ? "active" : "")).join("")}</nav>` : '<span class="header-note">A little idea. A whole new beginning.</span>'}<div class="header-end">${btn("theme", icon("moon"), "icon-button", 'aria-label="Switch colour theme"')}${state.user ? btn("profile", esc((state.user.user_metadata?.name || state.user.email || "You").slice(0, 1).toUpperCase()), "avatar") : state.demo ? '<span class="demo-label">Example workspace</span>' : btn("login", "Log in", "text-button")}</div></header>`;
+  state.view = active;
+  app.dataset.view = active || "welcome";
+  if (active) window.history.replaceState(null, "", "#" + active);
+  document.title = active
+    ? `${active[0].toUpperCase() + active.slice(1)} · Clay`
+    : "Clay — Your business, at home online";
+  return `<header class="app-header">${logo()}${state.user || state.demo ? `<nav aria-label="Main navigation">${["Home", "Website", "Profile"].map((n) => btn(n.toLowerCase(), n, active === n.toLowerCase() ? "active" : "", active === n.toLowerCase() ? 'aria-current="page"' : "")).join("")}</nav>` : '<span class="header-note">A little idea. A whole new beginning.</span>'}<div class="header-end">${btn("theme", icon("moon"), "icon-button", 'aria-label="Switch colour theme"')}${state.user ? btn("profile", esc((state.user.user_metadata?.name || state.user.email || "You").slice(0, 1).toUpperCase()), "avatar") : state.demo ? '<span class="demo-label">Example workspace</span>' : btn("login", "Log in", "text-button")}</div></header>`;
 }
 function landing() {
+  state.avatarUrl = "";
+  state.demoProfile = null;
   state.description = "";
   state.answers = [];
   state.questions = [];
@@ -79,26 +91,6 @@ function landing() {
   app.innerHTML =
     header() +
     `<main id="main" class="landing"><section class="welcome"><div class="welcome-copy"><p class="eyebrow">BIG IDEAS START SMALL</p><h1>Your business<br>deserves a<br><em>digital home.</em></h1><p class="lede">Create, customize, and grow your website<br class="desktop-only"> without the technical complexity.</p><div class="landing-ctas">${btn("signup", "Create my website " + icon("arrow"), "primary large")}${btn("demo", "Explore Clay", "outline large")}</div><p class="under-cta">Your ideas. Your website. Entirely yours.</p></div><div class="showcase" aria-label="Example website designs"><div class="orbit-label"><span></span> A space for every kind of business</div><div class="sample-window"><div class="browser-bar"><i></i><i></i><i></i><span>Made with Clay</span></div><div class="sample-interior"><div class="sample-nav"><b>forma<span>®</span></b><span>Our story &nbsp; Collection &nbsp; Contact</span></div><div class="sample-hero"><div><p class="small-caps">THOUGHTFULLY MADE</p><h2>Less, but<br>with meaning.</h2><p>Honest materials. Quiet details.<br>Furniture for a life well lived.</p><span class="sample-button">Discover the collection ↗</span></div><img src="https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=900&q=85" alt="Natural wood shelving in a thoughtfully designed interior"></div><div class="sample-bottom">Made slowly. &nbsp; Loved for a lifetime. <span>01 — 03</span></div></div></div><div class="floating-sample"><div class="floral-photo"></div><div><span class="small-caps">THE EVERYDAY, IN BLOOM</span><h3>Wild & wonderful.</h3><span>Flowers with a little more feeling.</span></div></div><div class="made-note">Built around you, by Clay.</div><div class="showcase-dots" aria-label="Example websites">${["Furniture", "Flowers", "Photography"].map((name, i) => btn("showcase", `<span class="sr-only">${name} example</span>`, i === 0 ? "active" : "", `data-index="${i}" aria-pressed="${i === 0}"`)).join("")}</div></div></section><section class="landing-bottom"><div><span class="step-no">01</span><h2>Tell us your story.</h2><p>You know your business.<br>That’s all you need to bring.</p></div><div><span class="step-no">02</span><h2>Make it your own.</h2><p>Ask for a change or make it yourself.<br>Every detail is in your hands.</p></div><div><span class="step-no">03</span><h2>Open your doors.</h2><p>One place to create, publish,<br>and grow your presence.</p></div><div class="try-editor">Curious how it feels?${btn("demo", "Explore the editor " + icon("arrow"), "text-button")}</div></section></main><footer class="landing-footer"><span>Built for real people. And their businesses.</span><span>Meet your next chapter.</span></footer>`;
-  if (
-    !sessionStorage.getItem("clay-intro") &&
-    !matchMedia("(prefers-reduced-motion: reduce)").matches
-  )
-    splash();
-}
-function splash() {
-  sessionStorage.setItem("clay-intro", "1");
-  const el = document.createElement("div");
-  el.className = "splash video-intro";
-  el.innerHTML =
-    '<video autoplay muted playsinline aria-label="A figure builds nine blocks, then reveals the Clay logo"><source src="assets/clay-intro.mp4" type="video/mp4"></video><button class="outline intro-skip">Skip intro</button>';
-  document.body.append(el);
-  const close = () => el.remove();
-  el.querySelector("button").onclick = close;
-  const video = el.querySelector("video");
-  video.onended = close;
-  video.onerror = close;
-  video.play().catch(close);
-  setTimeout(close, 8500);
 }
 function auth(signup = true) {
   state.signup = signup;
@@ -116,34 +108,83 @@ function auth(signup = true) {
 }
 function home() {
   state.preview = false;
+  app.innerHTML =
+    header("home") +
+    `<main id="main" class="home overview-home"><div class="overview-heading"><div><h1>Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}!</h1><p>Let’s get your business online.</p></div>${btn("new-website", "＋ New website", "primary", state.sites.length ? 'disabled aria-describedby="website-limit"' : "")}</div><section class="overview-shortcuts" aria-label="Website shortcuts">${[
+      ["business", "Business info", "store"],
+      ["design", "Design style", "palette"],
+      ["content", "Content", "document"],
+      ["publish", "Publish", "launch"],
+    ]
+      .map(([action, label, graphic]) =>
+        btn(
+          "home-tool",
+          uiIcon(graphic) + `<span>${label}</span>`,
+          `overview-shortcut shortcut-${action}`,
+          `data-tool="${action}"`,
+        ),
+      )
+      .join(
+        "",
+      )}</section><div class="overview-columns"><section class="website-overview" aria-labelledby="overview-site-title">${websiteThumbnail(state.sites[0])}<div class="website-overview-details"><h2 id="overview-site-title">Your website</h2>${state.sites.length ? `<h3>${esc(state.sites[0].model.name)}</h3><p class="website-status"><i aria-hidden="true"></i>${statusLabel(state.sites[0])}</p><p class="overview-edited">Edited ${new Date(state.sites[0].updated_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</p>${btn("website", "Edit website", "primary")}` : `<p>A home for your next big idea.</p><p class="muted">Create your website, then return here to keep it growing.</p>${btn("new-website", "Create my website", "primary")}`}</div></section><aside class="quick-links" aria-labelledby="quick-links-title"><h2 id="quick-links-title">Quick links</h2>${[
+      ["help", "Help center", "book"],
+      ["tutorial", "Video tutorials", "play"],
+      ["community", "Community", "people"],
+      ["support", "Contact support", "message"],
+    ]
+      .map(([action, label, graphic]) =>
+        btn(action, uiIcon(graphic) + `<span>${label}</span>`, "quick-link"),
+      )
+      .join(
+        "",
+      )}</aside></div><p id="website-limit" class="overview-limit">Your account includes one website, with all features.${state.sites.length ? " Edit your current website to keep shaping it." : ""}</p></main>`;
+}
+function uiIcon(name) {
+  const shapes = {
+    store:
+      '<path d="M3 10h18l-2-6H5l-2 6Zm2 0v10h14V10M9 20v-6h6v6M3 10c0 4 4 4 4 0 0 4 5 4 5 0 0 4 5 4 5 0 0 4 4 4 4 0"/>',
+    palette:
+      '<path d="M12 3a9 9 0 0 0 0 18h2a2 2 0 0 0 1-4c-1-1 0-2 1-2h2c6 0 4-12-6-12Z"/><circle cx="7" cy="10" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7" r="1"/><circle cx="18" cy="10" r="1"/>',
+    document: '<path d="M6 3h8l4 4v14H6V3Zm8 0v5h4M9 12h6M9 16h6"/>',
+    launch:
+      '<path d="m14 5 5-2 2 2-2 5-7 7-5-5 7-7ZM7 12H3l3-5h5M12 17v4l5-3v-5M4 20l4-4M16 8h.01"/>',
+    book: '<path d="M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3V4Zm9 2v15"/>',
+    play: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 8 6 4-6 4V8Z"/>',
+    people:
+      '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 5v2"/>',
+    message: '<path d="M4 4h16v12H9l-5 4V4Z"/>',
+    person:
+      '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+    settings:
+      '<path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3H9Z"/><circle cx="12" cy="12" r="3"/>',
+    shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3ZM12 7v9"/>',
+  };
+  return `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shapes[name] || shapes.document}</svg>`;
+}
+function websiteThumbnail(site) {
+  if (!site)
+    return '<div class="overview-preview empty-preview" aria-label="Your future website preview"><div class="preview-browser"><i></i><i></i><i></i></div><span>Your digital home<br>starts here.</span><div class="preview-placeholder"></div></div>';
+  const elements = site.model.pages[0].sections.flatMap((x) => x.elements),
+    image = elements.find((e) => e.type === "image" && safeImageUrl(e.src));
+  return `<div class="overview-preview" aria-label="Small preview of ${esc(site.model.name)}" style="background:${site.model.theme.background};color:${site.model.theme.text}"><div class="preview-browser"><i></i><i></i><i></i></div><b>${esc(site.model.name)}</b><span>${esc(elements.find((e) => e.type === "heading")?.text || site.model.name)}</span>${image ? `<img src="${esc(safeImageUrl(image.src))}" alt="${esc(image.alt || "Website preview")}">` : '<div class="preview-placeholder"></div>'}</div>`;
+}
+function createWebsite() {
+  if (state.sites.length) return website();
   try {
     const saved = JSON.parse(
       sessionStorage.getItem("clay-brief-" + state.user?.id) || "null",
     );
-    if (saved)
-      Object.assign(state, {
-        description: saved.description,
-        answers: saved.answers,
-      });
+    if (saved) {
+      state.description = saved.description;
+      state.answers = saved.answers;
+    }
   } catch {}
   app.innerHTML =
-    header("home") +
-    `<main id="main" class="home"><aside class="home-sidebar"><p class="eyebrow">YOUR SPACE</p>${btn("home", "Overview", "sidebar-link active")}${btn("website", "Your website", "sidebar-link")}${btn("profile", "Activity & messages", "sidebar-link")}${btn("settings", "Settings", "sidebar-link")}<p class="plan-note">One website.<br>Everything you need.</p></aside><section class="home-start"><div class="home-wordmark">${logo()}</div><p class="eyebrow">LET’S MAKE SOMETHING THAT’S YOURS</p><h1>Tell us about your business.</h1><p>Start with what you do. We’ll take it from there.</p><form id="business-form" class="prompt-box"><label class="sr-only" for="business">Describe your business</label><textarea id="business" name="business" maxlength="5000" placeholder="I run a small business called…" required></textarea><div><span>A few words are all it takes.</span><button class="send" aria-label="Start creating">${icon("send")}</button></div></form><div class="home-shortcuts">${btn("website", "Edit website", "outline")}${btn("profile", "View activity", "outline")}${btn("settings", "Your settings", "outline")}${btn("blank-site", "Start manually", "outline")}</div><div class="home-hints"><span>Make it personal.</span><span>Make it professional.</span><span>Make it yours.</span></div><p class="plan-note">Your account includes one website, with all features.</p></section><section class="your-sites"><div class="section-heading"><h2>Your digital home</h2><span>${state.sites.length} of 1 website</span></div>${siteList()}</section></main>`;
+    header("website") +
+    `<main id="main" class="question-view creation-view"><p class="eyebrow">LET’S MAKE SOMETHING THAT’S YOURS</p><h1>Tell us about your business.</h1><p>Start with what you do. We’ll take it from there.</p><form id="business-form" class="prompt-box"><label class="sr-only" for="business">Describe your business</label><textarea id="business" maxlength="5000" placeholder="I run a small business called…" required></textarea><div><span>A few words are all it takes.</span><button class="send" aria-label="Start creating">${icon("send")}</button></div></form><div class="recovery-actions">${btn("blank-site", "Start manually", "outline")}${state.description ? btn("resume-generation", "Resume website creation", "text-button") : ""}</div><p class="plan-note">Your account includes one website, with all features.</p></main>`;
   $("#business").value = state.description;
-  if (!state.sites.length && state.description)
-    $(".home-start").insertAdjacentHTML(
-      "beforeend",
-      btn("resume-generation", "Resume website creation", "text-button"),
-    );
   $("#business-form").onsubmit = async (e) => {
     e.preventDefault();
-    if (state.sites.length) {
-      toast(
-        "Your account includes one website. Open your website below to keep shaping it.",
-      );
-      $(".your-sites").scrollIntoView({ behavior: "smooth" });
-      return;
-    }
     state.description = $("#business").value;
     saveBrief();
     await busy(e.submitter, async () => {
@@ -153,10 +194,19 @@ function home() {
       state.questions = (result.questions || []).slice(0, 5);
       state.answers = [];
       state.question = 0;
-      if (!state.questions.length) await generate();
-      else question();
+      if (state.questions.length) question();
+      else await generate();
     });
   };
+}
+function website() {
+  const site = state.sites[0];
+  if (!site) {
+    createWebsite();
+    return;
+  }
+  if (!state.site || state.site.id !== site.id) openSite(site);
+  else workspace();
 }
 function siteList() {
   return state.sites.length
@@ -310,14 +360,13 @@ function openSite(site, progressive = false) {
 }
 function workspace(progressive = false) {
   if (!state.site) {
-    toast("Create or open a website first.");
-    home();
+    website();
     return;
   }
   const m = state.site.model;
   app.innerHTML =
     header("website") +
-    `<main id="main" class="workspace ${state.preview ? "previewing" : ""}"><div class="workspace-bar"><div class="website-title">${btn("pages", esc(m.name) + " <span>⌄</span>", "text-button")}<span id="save-status">${statusLabel()}</span></div><div class="device-controls" aria-label="Preview size">${btn("desktop", icon("desktop"), "icon-button " + (state.device === "desktop" ? "active" : ""), 'aria-label="Desktop preview"')}${btn("mobile", icon("mobile"), "icon-button " + (state.device === "mobile" ? "active" : ""), 'aria-label="Mobile preview"')}</div><div class="workspace-actions">${btn("history", "Previous versions", "text-button")}${btn("preview", state.preview ? "Back to editing" : "Preview", "outline")}${btn("publish", "Publish " + icon("arrow"), "primary")}</div></div><div class="canvas-surround"><div class="canvas-top"><div><span id="page-name">${esc(m.pages.find((p) => p.id === state.page)?.title || "Home")}</span><span> / </span>${btn("pages", "Pages", "text-button")}</div><div>${btn("undo", icon("undo"), "icon-button", 'aria-label="Undo" ' + (!state.undo.length ? "disabled" : ""))}${btn("redo", icon("redo"), "icon-button", 'aria-label="Redo" ' + (!state.redo.length ? "disabled" : ""))}${btn("tools", "Website tools", "text-button")}</div></div><div class="canvas ${state.device === "mobile" ? "mobile" : ""}"><iframe id="canvas" title="Your website" sandbox="allow-scripts"></iframe></div></div>${state.preview ? "" : `<div class="editor-dock"><div class="conversation-heading"><h2>Make it yours.</h2><p>Small changes. New possibilities.</p></div><div class="conversation" id="conversation" aria-live="polite">${state.messages.length ? state.messages.map((x) => `<p class="message ${x.role}">${esc(x.text)}</p>`).join("") : `<p class="message">Your website is ready to shape. Select anything on the right, or describe a change below.</p><div class="conversation-tools">${btn("pages", "Manage pages", "text-button")}${btn("sections", "Organize your content", "text-button")}${btn("tools", "Explore editing tools", "text-button")}</div>`}</div><div id="selection" class="selection-context"><span>Select something to shape it, or ask for a change.</span>${btn("sections", "Arrange sections", "text-button")}</div><form id="edit-form"><label class="sr-only" for="edit-prompt">Ask Clay to change anything</label><textarea id="edit-prompt" rows="1" maxlength="4000" placeholder="Ask Clay to change anything…" required></textarea><button class="send" aria-label="Apply change">${icon("send")}</button></form><div class="dock-footer"><span>${state.demo ? "Example website · try direct editing" : "Your ideas, brought to life."}</span><span>Double-click text to edit directly</span></div></div>`}</main>`;
+    `<main id="main" class="workspace ${state.preview ? "previewing" : ""}"><div class="workspace-bar"><div class="website-title">${btn("pages", esc(m.name) + " <span>⌄</span>", "text-button")}<span id="save-status" role="status" aria-live="polite">${statusLabel()}</span></div><div class="device-controls" aria-label="Preview size">${btn("desktop", icon("desktop"), "icon-button " + (state.device === "desktop" ? "active" : ""), 'aria-label="Desktop preview"')}${btn("mobile", icon("mobile"), "icon-button " + (state.device === "mobile" ? "active" : ""), 'aria-label="Mobile preview"')}</div><div class="workspace-actions">${btn("history", "Previous versions", "text-button")}${btn("preview", state.preview ? "Back to editing" : "Preview", "outline")}${btn("publish", "Publish " + icon("arrow"), "primary")}</div></div><div class="canvas-surround"><div class="canvas-top"><div><span class="workspace-location">Website</span><span aria-hidden="true">/</span><span id="page-name">${esc(m.pages.find((p) => p.id === state.page)?.title || "Home")}</span><span> / </span>${btn("pages", "Pages", "text-button")}</div><div>${btn("undo", icon("undo"), "icon-button", 'aria-label="Undo" ' + (!state.undo.length ? "disabled" : ""))}${btn("redo", icon("redo"), "icon-button", 'aria-label="Redo" ' + (!state.redo.length ? "disabled" : ""))}${btn("tools", "Website tools", "text-button")}</div></div><div class="canvas ${state.device === "mobile" ? "mobile" : ""}"><iframe id="canvas" title="Your website" sandbox="allow-scripts"></iframe></div></div>${state.preview ? "" : `<div class="editor-dock"><div class="conversation-heading"><h2>Make it yours.</h2><p>Small changes. New possibilities.</p></div><div class="conversation" id="conversation" aria-live="polite">${state.messages.length ? state.messages.map((x) => `<p class="message ${x.role}">${esc(x.text)}</p>`).join("") : `<p class="message">Your website is ready to shape. Select anything on the right, or describe a change below.</p><div class="conversation-tools">${btn("pages", "Manage pages", "text-button")}${btn("sections", "Organize your content", "text-button")}${btn("tools", "Explore editing tools", "text-button")}</div>`}</div><div id="selection" class="selection-context"><span>Select a section or text to edit it.</span>${btn("sections", "Arrange sections", "text-button")}</div><form id="edit-form"><label class="sr-only" for="edit-prompt">Ask Clay to change anything</label><textarea id="edit-prompt" rows="1" maxlength="4000" placeholder="Ask Clay to change anything…" required></textarea><button class="send" aria-label="Apply change">${icon("send")}</button></form><div class="dock-footer"><span>${state.demo ? "Example website · try direct editing" : "Your ideas, brought to life."}</span><span>Double-click text to edit directly</span></div></div>`}</main>`;
   renderCanvas(progressive);
   if ($("#edit-form"))
     $("#edit-form").onsubmit = async (e) => {
@@ -443,7 +492,7 @@ async function change(ops, label = "Edited website") {
     state.sites = state.sites.map((s) => (s.id === saved.id ? saved : s));
     if (!next.pages.some((p) => p.id === state.page))
       state.page = next.pages[0].id;
-    workspace();
+    if (state.view === "website") workspace();
   } finally {
     state.busy = false;
   }
@@ -897,22 +946,171 @@ async function download() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast("Your website has been downloaded.");
 }
-function profile() {
+function profile(tab = "profile") {
+  if (typeof tab !== "string") tab = "profile";
+  state.profileTab = tab;
+  const u = state.user?.user_metadata || state.demoProfile || {},
+    name = u.name || u.full_name || "Business Owner";
+  const business = u.business_type || "Small Business";
+  const tabs = [
+    ["profile", "Profile", "person"],
+    ["business", "Business info", "store"],
+    ["preferences", "Preferences", "settings"],
+    ["security", "Security", "shield"],
+  ];
+  const panelContent =
+    tab === "profile"
+      ? `<h1>Your profile</h1><form id="profile-account-form" class="profile-details-form"><div class="profile-field"><label for="profile-name">Name</label><input id="profile-name" name="name" autocomplete="name" value="${esc(u.name || u.full_name || "")}" maxlength="100" required></div><div class="profile-field"><label for="profile-email">Email</label><div><input id="profile-email" type="email" value="${esc(state.user?.email || "owner@mybusiness.com")}" readonly aria-describedby="profile-email-help"><small id="profile-email-help">Your sign-in email.</small></div></div><div class="profile-field"><label for="profile-business-type">Business type</label><select id="profile-business-type" name="business_type">${["Small Business", "Retail", "Food & Drink", "Services", "Creative & Design", "Health & Wellness", "Education", "Other"].map((x) => `<option ${business === x ? "selected" : ""}>${x.replace("&", "&amp;")}</option>`).join("")}</select></div><div class="profile-field"><label for="profile-location">Location</label><input id="profile-location" name="location" autocomplete="address-level2" placeholder="City, country" value="${esc(u.location || "")}" maxlength="160"></div><div class="profile-save-row"><p id="profile-save-status" role="status" aria-live="polite">Your details are up to date.</p><button class="primary" id="profile-save">Save</button></div></form>`
+      : tab === "business"
+        ? `<h1>Business info</h1>${
+            state.sites[0]
+              ? `<p class="muted">The details customers see on your website.</p><form id="profile-business-form" class="profile-details-form">${[
+                  ["name", "Business name"],
+                  ["email", "Contact email"],
+                  ["phone", "Phone"],
+                  ["address", "Location"],
+                  ["description", "Description"],
+                ]
+                  .map(
+                    ([key, label]) =>
+                      `<div class="profile-field"><label for="business-${key}">${label}</label>${key === "description" ? `<textarea id="business-${key}" name="${key}" maxlength="1200">${esc(state.sites[0].model[key] || "")}</textarea>` : `<input id="business-${key}" name="${key}" ${key === "name" ? 'required maxlength="120"' : 'maxlength="250"'} value="${esc(state.sites[0].model[key] || "")}" ${key === "email" ? 'type="email"' : ""}>`}</div>`,
+                  )
+                  .join(
+                    "",
+                  )}<div class="profile-save-row"><p id="business-save-status" role="status"></p><button class="primary">Save</button></div></form>${btn("activity", "Website activity & messages", "text-button")}`
+              : `<p>Create your website to add the details your customers will see.</p>${btn("new-website", "Create my website", "primary")}`
+          }`
+        : tab === "preferences"
+          ? `<h1>Preferences</h1><p>Make Clay comfortable for you.</p><fieldset class="theme-options"><legend>Appearance</legend>${["light", "dark"].map((mode) => `<label><input type="radio" name="appearance" value="${mode}" ${document.documentElement.dataset.theme === mode ? "checked" : ""}>${mode[0].toUpperCase() + mode.slice(1)} mode</label>`).join("")}</fieldset><p class="muted">Your choice is saved on this device.</p>`
+          : `<h1>Security</h1><p>Your website, profile and messages are private to your account.</p><h2>Sign-in methods</h2><p>${state.user?.app_metadata?.providers?.includes("google") ? "Google and secure email links." : "Secure email links. You can also sign in with Google when it is connected."}</p><h2>Account sessions</h2><p>Using a shared computer? Sign out when you finish.</p><div class="security-actions">${btn("signout", "Sign out", "outline")}${btn("signout-all", "Sign out of all devices", "outline", state.demo ? "disabled" : "")}</div>`;
   app.innerHTML =
     header("profile") +
-    `<main id="main" class="profile"><aside class="profile-nav"><div class="profile-avatar">${esc((state.user?.email || "C").slice(0, 1).toUpperCase())}</div><h2>Your profile</h2>${btn("settings", "Account", "sidebar-link")}${btn("theme", "Appearance", "sidebar-link")}${btn("settings", "Security & help", "sidebar-link")}${btn("signout", "Sign out", "sidebar-link")}</aside><div class="profile-heading"><div><p class="eyebrow">YOUR LITTLE CORNER</p><h1>${esc(state.user?.user_metadata?.name || "Make yourself at home.")}</h1><p>${esc(state.user?.email || "Explore your website and its possibilities.")}</p></div>${btn("settings", "Settings", "outline")}</div><section class="profile-site"><div class="section-heading"><h2>Your website</h2><span>One website. All yours.</span></div>${siteList()}</section><section class="profile-account"><h2>Account details</h2><form id="profile-account-form" class="stack-form"><label>Your name<input name="name" value="${esc(state.user?.user_metadata?.name || "")}" ${state.demo ? "disabled" : ""}></label><label>Email address<input value="${esc(state.user?.email || "Example workspace")}" disabled></label><button class="primary" ${state.demo ? "disabled" : ""}>Save changes</button></form></section><section class="activity"><div class="section-heading"><h2>A little perspective</h2><span>Last 30 days</span></div><div id="activity-content"><p>${state.sites.length ? "Loading your website activity…" : "Publish your website to start seeing visitors and messages here."}</p></div></section></main>`;
-  $("#profile-account-form").onsubmit = (e) => {
-    e.preventDefault();
-    busy(e.submitter, async () => {
-      const c = await api.client();
-      const { data, error } = await c.auth.updateUser({
-        data: { name: new FormData(e.target).get("name") },
+    `<main id="main" class="profile account-profile"><aside class="account-sidebar"><div class="owner-avatar">${profilePicture()}</div><h2>${esc(name)}</h2><p>${esc(business)}</p><nav aria-label="Profile settings">${tabs.map(([id, label, graphic]) => btn("profile-tab", uiIcon(graphic) + `<span>${label}</span>`, "profile-menu-item " + (tab === id ? "active" : ""), `data-tab="${id}" ${tab === id ? 'aria-current="page"' : ""}`)).join("")}</nav></aside><section class="account-main">${panelContent}</section><aside class="account-photo"><h2>Profile picture</h2><div class="profile-photo-preview">${profilePicture()}</div><label class="outline upload-profile-picture" for="profile-picture">Upload image<input class="sr-only" id="profile-picture" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="picture-hint">JPG, PNG or WebP · up to 5 MB</p><p id="picture-status" role="status" aria-live="polite"></p></aside></main>`;
+  const form = $("#profile-account-form");
+  if (form) {
+    form.oninput = () => {
+      $("#profile-save-status").textContent = "You have unsaved changes.";
+    };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const values = Object.fromEntries(new FormData(form));
+      busy(e.submitter, async () => {
+        if (state.demo) state.demoProfile = { ...state.demoProfile, ...values };
+        else {
+          const owner = state.user?.id,
+            updated = await api.updateProfile(values);
+          if (state.user?.id !== owner) return;
+          state.user = updated;
+        }
+        profile();
+        $("#profile-save-status").textContent = "Changes saved.";
       });
-      if (error) throw error;
-      state.user = data.user;
-      toast("Your name has been updated.");
-    });
+    };
+  }
+  const businessForm = $("#profile-business-form");
+  if (businessForm)
+    businessForm.onsubmit = (e) => {
+      e.preventDefault();
+      busy(e.submitter, async () => {
+        state.site = clone(state.sites[0]);
+        await change(
+          [
+            {
+              type: "update_info",
+              value: Object.fromEntries(new FormData(businessForm)),
+            },
+          ],
+          "Updated business information",
+        );
+        $("#business-save-status").textContent = "Changes saved.";
+      });
+    };
+  document.querySelectorAll('[name="appearance"]').forEach(
+    (input) =>
+      (input.onchange = () => {
+        localStorage.setItem("clay-theme", input.value);
+        theme();
+      }),
+  );
+  $("#profile-picture").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const label = $(".upload-profile-picture");
+    label.classList.add("uploading");
+    $("#picture-status").textContent = "Uploading your picture…";
+    try {
+      const photo = await compressPhoto(file);
+      if (state.demo) state.avatarUrl = photo;
+      else {
+        const owner = state.user?.id,
+          updated = await api.uploadAvatar(photo);
+        if (state.user?.id !== owner) return;
+        state.user = updated;
+        await loadAvatar();
+      }
+      profile(state.profileTab);
+      $("#picture-status").textContent = "Profile picture saved.";
+    } catch (error) {
+      $("#picture-status").textContent = errorText(error);
+    } finally {
+      label.classList.remove("uploading");
+    }
   };
+}
+function profilePicture() {
+  const src = safeImageUrl(
+    state.avatarUrl || state.user?.user_metadata?.avatar_url || "",
+  );
+  return src
+    ? `<img src="${esc(src)}" alt="Your profile picture">`
+    : `<span class="avatar-placeholder">${uiIcon("person")}</span>`;
+}
+async function loadAvatar() {
+  const owner = state.user?.id,
+    path = state.user?.user_metadata?.avatar_path;
+  state.avatarUrl = "";
+  if (!path) return;
+  try {
+    const url = await api.avatarUrl(path);
+    if (state.user?.id === owner) state.avatarUrl = url;
+  } catch {}
+}
+function help(topic = "help") {
+  const content = {
+    help: [
+      "Help center",
+      `<div class="help-steps"><h3>1. Start at Home</h3><p>Your overview keeps your website and everyday shortcuts together.</p><h3>2. Shape your website</h3><p>Open Website to edit. Double-click text, select a section, or ask Clay for a change.</p><h3>3. Open your doors</h3><p>Use Publish when you’re ready. Your live website updates after publishing finishes.</p></div>`,
+    ],
+    tutorial: [
+      "Video tutorials",
+      `<video class="walkthrough-video" controls playsinline preload="metadata" src="assets/clay-walkthrough.mp4" aria-label="Clay editor walkthrough"></video><ol><li>Open Website to see the editor.</li><li>Select text and edit it directly.</li><li>Use Website tools to change the design.</li><li>Use Preview to check your website.</li></ol>`,
+    ],
+    community: [
+      "Community",
+      `<p>Clay’s community space is not available yet.</p><p>The Help center includes guidance you can use today.</p>${btn("help", "Open Help center", "primary")}`,
+    ],
+    support: [
+      "Contact support",
+      `<p>If you need help, copy a short report and share it with Clay’s owner.</p><p>The report includes your current page and browser details. Describe what you expected and what happened.</p>${btn("copy-support", "Copy support report", "primary")}<p id="support-status" role="status"></p>`,
+    ],
+  };
+  const [title, body] = content[topic] || content.help;
+  showPanel(title, body);
+}
+
+function activity() {
+  if (!state.sites.length) {
+    showPanel(
+      "Website activity",
+      "<p>Publish your website to start seeing visits and messages here.</p>",
+    );
+    return;
+  }
+  showPanel(
+    "Website activity",
+    '<div id="activity-content"><p>Loading your website activity…</p></div>',
+    true,
+  );
   if (state.sites.length)
     run(async () => {
       const { events, contacts } = state.demo
@@ -1069,8 +1267,32 @@ const actions = {
     theme();
   },
   home: () => (state.user || state.demo ? home() : landing()),
-  website: () => (state.site ? workspace() : home()),
-  profile,
+  website,
+  "new-website": createWebsite,
+  "home-tool": (b) => {
+    if (!state.sites.length) {
+      createWebsite();
+      return;
+    }
+    website();
+    ({ business: info, design: style, content, publish: publishSite })[
+      b.dataset.tool
+    ]?.();
+  },
+  profile: () => profile(),
+  "profile-tab": (b) => profile(b.dataset.tab),
+  activity,
+  help: () => help(),
+  tutorial: () => help("tutorial"),
+  community: () => help("community"),
+  support: () => help("support"),
+  "copy-support": async () => {
+    await navigator.clipboard.writeText(
+      `Clay support report\nPage: ${state.view}\nBrowser: ${navigator.userAgent}\nWhat happened: `,
+    );
+    $("#support-status").textContent =
+      "Report copied. Share it with Clay’s owner.";
+  },
   settings,
   signout: async () => {
     if (!state.demo) await api.logout();
@@ -1337,6 +1559,7 @@ document.addEventListener("keydown", (e) => {
     (e.ctrlKey || e.metaKey) &&
     e.key === "z" &&
     state.site &&
+    state.view === "website" &&
     !/INPUT|TEXTAREA/.test(e.target.tagName)
   ) {
     e.preventDefault();
@@ -1353,7 +1576,10 @@ async function init() {
     if (s) {
       state.user = s.user;
       state.sites = await api.listSites();
-      home();
+      await loadAvatar();
+      if (location.hash === "#website") website();
+      else if (location.hash === "#profile") profile();
+      else home();
     }
     if (api.configured()) {
       const c = await api.client();
@@ -1369,6 +1595,7 @@ async function init() {
             () =>
               run(async () => {
                 state.sites = await api.listSites();
+                await loadAvatar();
                 home();
               }),
             0,

@@ -147,3 +147,52 @@ export async function insights(id) {
   if (e1 || e2) throw Error("Your activity could not be loaded.");
   return { events, contacts };
 }
+
+export async function updateProfile(values) {
+  const c = await client();
+  const name = String(values.name || "").trim(),
+    business_type = String(values.business_type || "").slice(0, 80),
+    location = String(values.location || "").trim();
+  if (!name || name.length > 100 || location.length > 160)
+    throw Error("Enter your name and a location under 160 characters.");
+  const { data, error } = await c.auth.updateUser({
+    data: { name, business_type, location },
+  });
+  if (error) throw Error("Your profile could not be saved. Please try again.");
+  return data.user;
+}
+export async function avatarUrl(path) {
+  const c = await client();
+  const { data, error } = await c.storage
+    .from("clay-avatars")
+    .createSignedUrl(path, 3600);
+  if (error) throw Error("Your profile picture could not be loaded.");
+  return data.signedUrl;
+}
+export async function uploadAvatar(dataUrl) {
+  const c = await client();
+  const {
+    data: { user },
+    error: authError,
+  } = await c.auth.getUser();
+  if (authError || !user) throw Error("Please sign in again.");
+  const blob = await (await fetch(dataUrl)).blob(),
+    path = user.id + "/avatar.jpg";
+  const { error } = await c.storage
+    .from("clay-avatars")
+    .upload(path, blob, {
+      contentType: "image/jpeg",
+      cacheControl: "0",
+      upsert: true,
+    });
+  if (error)
+    throw Error("Your picture could not be uploaded. Please try again.");
+  const { data, error: saveError } = await c.auth.updateUser({
+    data: { avatar_path: path },
+  });
+  if (saveError)
+    throw Error(
+      "Your picture uploaded, but could not be attached to your profile. Please try again.",
+    );
+  return data.user;
+}

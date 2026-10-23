@@ -44,9 +44,7 @@ try {
     viewport: { width: 390, height: 844 },
   });
   await p.goto(link.action_link);
-  await p
-    .getByRole("heading", { name: "Tell us about your business." })
-    .waitFor();
+  await p.getByRole("heading", { name: "Your website", exact: true }).waitFor();
   await p.route("**/functions/v1/clay", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
     const b = route.request().postDataJSON();
@@ -59,6 +57,9 @@ try {
       });
     return route.continue();
   });
+  await p
+    .getByRole("button", { name: "Create my website", exact: true })
+    .click();
   await p
     .getByPlaceholder("I run a small business called…")
     .fill("I run a pottery studio called Test Clay.");
@@ -87,7 +88,11 @@ try {
     false,
   );
   await p.reload();
-  await p.locator(".site-row").filter({ hasText: "My business" }).waitFor();
+  await p
+    .locator(".app-header")
+    .getByRole("button", { name: "Home", exact: true })
+    .click();
+  await p.getByRole("heading", { name: "My business", exact: true }).waitFor();
   console.log("PASS real blank website saves and survives reload");
   await p.getByRole("button", { name: "Profile", exact: true }).click();
   assert.equal(

@@ -58,20 +58,19 @@ try {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(link.action_link);
-  await page
-    .getByRole("heading", { name: "Tell us about your business." })
-    .waitFor({ timeout: 45000 });
+  await page.locator(".overview-home").waitFor({ timeout: 45000 });
   console.log("PASS real magic-link sign-in");
   await page.reload();
-  await page
-    .getByRole("heading", { name: "Tell us about your business." })
-    .waitFor();
+  await page.locator(".overview-home").waitFor({ timeout: 45000 });
   console.log("PASS session persistence after reload");
   await page.screenshot({
     path: ".playwright/home-authenticated.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: /Forma.*Open website/ }).click();
+  await page
+    .locator(".app-header")
+    .getByRole("button", { name: "Website", exact: true })
+    .click();
   const heading = page
     .frameLocator("#canvas")
     .getByRole("heading", { name: /Made slowly/ });
@@ -85,7 +84,10 @@ try {
   if (await page.locator("#panel").isVisible())
     await page.getByRole("button", { name: "Close panel" }).click();
   await page.reload();
-  await page.getByRole("button", { name: /Forma.*Open website/ }).click();
+  await page
+    .locator(".app-header")
+    .getByRole("button", { name: "Website", exact: true })
+    .click();
   await page
     .frameLocator("#canvas")
     .getByRole("heading", { name: "Handmade for your home." })
@@ -96,11 +98,8 @@ try {
     fullPage: true,
   });
   await page.getByRole("button", { name: "Profile", exact: true }).click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page
-    .locator("#panel")
-    .getByRole("button", { name: "Sign out", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Security", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await page
     .getByRole("button", { name: "Create my website", exact: true })
     .waitFor();

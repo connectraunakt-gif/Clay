@@ -46,6 +46,12 @@ await manage("/database/query", "POST", {
     "utf8",
   ),
 });
+await manage("/database/query", "POST", {
+  query: await readFile(
+    "supabase/migrations/202610230001_profile_avatars.sql",
+    "utf8",
+  ),
+});
 const gh = await fetch(
   "https://api.github.com/repos/connectraunakt-gif/Clay/pages",
   {

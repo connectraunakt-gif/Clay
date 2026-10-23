@@ -77,4 +77,4 @@ Generation starts an authenticated background job and returns promptly. Only the
 
 The configured AI service uses NVIDIA's hosted `openai/gpt-oss-20b` model. Private credentials stay in Supabase. AI image requests are resolved through Wikimedia Commons; eligible Creative Commons/public-domain images include source attribution in the generated website. Stock images should not be described as the business's actual products or premises. Users can replace them with their own photos. Existing published websites need republishing to receive renderer fixes.
 
-The Blender intro source and reproducible rendering instructions are in `animation/README.md`.
+Clay opens immediately without a splash screen. Home provides shortcuts and a small preview; the full editor is available only in Website. Profile supports name, business type, location and a private profile picture. Design changes and their rationale are documented in `docs/design-changes-2026-10-23.md`.

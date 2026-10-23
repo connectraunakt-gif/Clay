@@ -37,10 +37,15 @@ await page
 await page.getByRole("heading", { name: "Previous versions" }).waitFor();
 await page.getByRole("button", { name: "Close panel" }).click();
 await page.getByRole("button", { name: "Profile", exact: true }).click();
-await page.getByRole("heading", { name: "A little perspective" }).waitFor();
-await page.getByRole("button", { name: "Settings", exact: true }).click();
-await page.getByRole("button", { name: "Switch light / dark mode" }).click();
-await page.getByRole("button", { name: "Close panel" }).click();
+await page
+  .getByRole("heading", { name: "Your profile", exact: true })
+  .waitFor();
+await page.getByRole("button", { name: "Preferences", exact: true }).click();
+await page.getByLabel("Dark mode", { exact: true }).check();
+await page
+  .locator(".account-sidebar")
+  .getByRole("button", { name: "Profile", exact: true })
+  .click();
 await page.screenshot({ path: ".playwright/profile-dark.png", fullPage: true });
 await page.setViewportSize({ width: 390, height: 844 });
 await page.getByRole("button", { name: "Website", exact: true }).click();

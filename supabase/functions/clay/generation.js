@@ -1,5 +1,5 @@
 import { validate, uid } from "./model.js";
-export const planSchema = `Return {plan:{name,description,email,phone,address,theme:{background:'#rrggbb',text:'#rrggbb',accent:'#rrggbb',font:'Inter'|'Georgia'|'Arial'|'Trebuchet MS',spacing:'comfortable'|'compact'|'spacious'},content:[{name,description,price}],pages:[{title,slug,navLabel?,sections:[{type:'hero'|'text'|'services'|'gallery'|'products'|'contact'|'testimonials',layout:'split'|'center'|'grid'|'stack',heading,text?,imageQuery?,imageAlt?,images?:[{query,alt}],button?:{text,href},items?:[{name,description,price}]}]}]}}. Do not produce IDs, HTML or code. Clay creates all internal identifiers and navigation. Use short natural English photo search phrases (e.g. 'coffee cup', 'wooden furniture'), never URLs. Page slug for Home is index. Buttons can link to #contact, #menu, a page slug, mailto: or a supplied social URL. Contact sections include a form automatically; product sections display content items. Vary layouts, typography, palette, sections and copy for the business. Only include pages and sections that materially help this business. Honor user exclusions and exact requested section/page counts. Never invent business addresses, phone numbers, opening hours, testimonials, awards, prices or claims. Never describe stock photos as actual staff, products or premises. Use concise copy; at most 3 pages unless the user explicitly asks for more. Keep the JSON compact and complete.`;
+export const planSchema = `Return {plan:{name,description,email,phone,address,theme:{background:'#rrggbb',text:'#rrggbb',accent:'#rrggbb',font:'Inter'|'Georgia'|'Arial'|'Trebuchet MS',spacing:'comfortable'|'compact'|'spacious'},content:[{name,description,price,imageQuery?,alt?}],pages:[{title,slug,navLabel?,sections:[{type:'hero'|'text'|'services'|'gallery'|'products'|'contact'|'testimonials',layout:'split'|'center'|'grid'|'stack'|'list',heading,text?,imageQuery?,imageAlt?,images?:[{query,alt}],button?:{text,href},items?:[{name,description,price,imageQuery?,alt?}]}]}]}}. Do not produce IDs, HTML or code. Clay creates all internal identifiers and navigation. Use short natural English photo search phrases (e.g. 'coffee cup', 'wooden furniture'), never URLs. Page slug for Home is index. Buttons can link to #contact, #menu, a page slug, mailto: or a supplied social URL. Contact sections include a form automatically; product sections display content items. Vary layouts, typography, palette, sections and copy for the business. Only include pages and sections that materially help this business. Honor user exclusions and exact requested section/page counts. Never invent business addresses, phone numbers, opening hours, testimonials, awards, prices or claims. Never describe stock photos as actual staff, products or premises. Use concise copy; at most 3 pages unless the user explicitly asks for more. Keep the JSON compact and complete.`;
 const text = (v = "") => String(v ?? "");
 const slug = (v) =>
   text(v)
@@ -61,6 +61,12 @@ export function compilePlan(plan) {
           text: text(item.name || item.text),
           description: text(item.description),
           price: text(item.price),
+          ...(item.imageQuery
+            ? {
+                imageQuery: text(item.imageQuery),
+                alt: text(item.alt || item.name),
+              }
+            : {}),
         });
       const images = [
         ...(s.imageQuery ? [{ query: s.imageQuery, alt: s.imageAlt }] : []),
@@ -127,6 +133,9 @@ export function compilePlan(plan) {
       name: text(c.name),
       description: text(c.description),
       price: text(c.price),
+      ...(c.imageQuery
+        ? { imageQuery: text(c.imageQuery), alt: text(c.alt || c.name) }
+        : {}),
     })),
     pages,
   });

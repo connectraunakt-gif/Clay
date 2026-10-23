@@ -1,3 +1,4 @@
+import { canvasScript, canvasCss } from "./canvas.js";
 export const uid = () => crypto.randomUUID();
 export const esc = (v = "") =>
   String(v).replace(
@@ -27,6 +28,42 @@ export const sectionTypes = [
   "testimonials",
 ];
 const color = (v) => /^#[0-9a-f]{6}$/i.test(v);
+function validateStyle(style) {
+  if (style == null) return;
+  if (!style || typeof style !== "object" || Array.isArray(style))
+    throw Error("Choose a supported style.");
+  for (const [key, value] of Object.entries(style)) {
+    const valid = ["color", "background"].includes(key)
+      ? color(value)
+      : key === "fontFamily"
+        ? fonts.includes(value)
+        : key === "textAlign"
+          ? ["left", "center", "right"].includes(value)
+          : key === "fontSize"
+            ? Number.isInteger(value) && value >= 12 && value <= 100
+            : key === "padding"
+              ? Number.isInteger(value) && value >= 0 && value <= 100
+              : false;
+    if (!valid) throw Error("Choose a supported element style.");
+  }
+}
+const styleText = (style = {}) =>
+  Object.entries(style)
+    .map(
+      ([key, value]) =>
+        `${key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}:${["fontSize", "padding"].includes(key) ? value + "px" : value};`,
+    )
+    .join("");
+function validatePhoto(node) {
+  for (const key of ["src", "alt", "credit", "creditUrl"])
+    if (
+      node[key] != null &&
+      (typeof node[key] !== "string" ||
+        node[key].length > (key === "src" ? 400000 : 12000))
+    )
+      throw Error("Check the image details.");
+  validateStyle(node.style);
+}
 export function validate(m) {
   if (
     !m ||
@@ -69,12 +106,24 @@ export function validate(m) {
         s.elements.length > 60
       )
         throw Error("This section could not be saved.");
-      if (s.layout && !["split", "center", "grid", "stack"].includes(s.layout))
+      if (
+        s.layout &&
+        !["split", "center", "grid", "stack", "list"].includes(s.layout)
+      )
         throw Error("Choose a supported layout.");
       if (s.background && !color(s.background))
         throw Error("Choose a valid colour.");
+      if (
+        s.itemOrder &&
+        (!Array.isArray(s.itemOrder) ||
+          s.itemOrder.length > 560 ||
+          s.itemOrder.some((id) => typeof id !== "string") ||
+          new Set(s.itemOrder).size !== s.itemOrder.length)
+      )
+        throw Error("Check the item order.");
       for (const e of s.elements) {
         check(e.id);
+        validatePhoto(e);
         if (!["heading", "text", "image", "button", "item"].includes(e.type))
           throw Error("This content is not supported.");
         for (const k of [
@@ -86,6 +135,7 @@ export function validate(m) {
           "description",
           "credit",
           "creditUrl",
+          "imageQuery",
         ])
           if (
             e[k] != null &&
@@ -110,6 +160,7 @@ export function validate(m) {
     throw Error("Your content list is too long.");
   for (const c of m.content) {
     check(c.id);
+    validatePhoto(c);
     if (
       typeof c.name !== "string" ||
       c.name.length > 200 ||
@@ -133,6 +184,8 @@ export function locate(m, id) {
         if (e.id === id) return { node: e, page: p, section: s, element: e };
     }
   }
+  const content = m.content.find((c) => c.id === id);
+  if (content) return { node: content, content };
   if (id === "navigation") return { node: m.navigation };
   if (id === "theme") return { node: m.theme };
   return null;
@@ -180,6 +233,7 @@ export function applyOperations(model, operations) {
         f.page.sections = f.page.sections.filter((s) => s.id !== o.target);
         break;
       case "move_section": {
+        if (!Number.isInteger(o.index)) throw Error("Choose a position.");
         if (!f?.section || f.element) throw Error("Choose a section.");
         const p = m.pages.find((p) => p.id === (o.pageId || f.page.id));
         if (!p) throw Error("Choose a destination page.");
@@ -188,6 +242,7 @@ export function applyOperations(model, operations) {
         break;
       }
       case "move_element": {
+        if (!Number.isInteger(o.index)) throw Error("Choose a position.");
         if (!f?.element) throw Error("Choose some content.");
         const dest = locate(m, o.sectionId);
         if (!dest?.section || dest.element)
@@ -196,6 +251,29 @@ export function applyOperations(model, operations) {
           (e) => e.id !== o.target,
         );
         dest.section.elements.splice(Math.max(0, o.index), 0, f.element);
+        delete f.section.itemOrder;
+        delete dest.section.itemOrder;
+        break;
+      }
+      case "reorder_items": {
+        if (
+          !f?.section ||
+          f.element ||
+          f.section.type !== "products" ||
+          !Array.isArray(o.value)
+        )
+          throw Error("Choose a product section.");
+        const ids = [
+          ...f.section.elements.filter((e) => e.type === "item"),
+          ...m.content,
+        ].map((e) => e.id);
+        if (
+          o.value.length !== ids.length ||
+          new Set(o.value).size !== ids.length ||
+          o.value.some((id) => !ids.includes(id))
+        )
+          throw Error("Choose the items in this section.");
+        f.section.itemOrder = o.value;
         break;
       }
       case "edit_text":
@@ -204,9 +282,12 @@ export function applyOperations(model, operations) {
         f.element.text = String(o.value);
         break;
       case "replace_image":
-        if (f?.element?.type !== "image" || !/^https:\/\//.test(o.value.src))
+        if (
+          (!f?.content && !["image", "item"].includes(f?.element?.type)) ||
+          !safeImageUrl(o.value.src)
+        )
           throw Error("Use a secure image link.");
-        Object.assign(f.element, {
+        Object.assign(f.node, {
           src: o.value.src,
           alt: String(o.value.alt || ""),
           credit: String(o.value.credit || ""),
@@ -217,11 +298,27 @@ export function applyOperations(model, operations) {
         for (const [k, v] of Object.entries(o.value)) {
           if (!["background", "text", "accent"].includes(k) || !color(v))
             throw Error("Choose a valid colour.");
-          if (f?.section && !f.element && k === "background")
+          if (f?.element || f?.content) {
+            if (k === "accent")
+              throw Error("Choose text or background for an element.");
+            f.node.style = { ...f.node.style, [k === "text" ? "color" : k]: v };
+          } else if (f?.section && !f.element && k === "background")
             f.section.background = v;
           else m.theme[k] = v;
         }
         break;
+      case "update_style":
+        if (!f?.element && !f?.content) throw Error("Choose an element.");
+        validateStyle(o.value);
+        f.node.style = { ...f.node.style, ...o.value };
+        break;
+      case "move_content": {
+        if (!f?.content || !Number.isInteger(o.index))
+          throw Error("Choose an item and position.");
+        m.content = m.content.filter((c) => c.id !== o.target);
+        m.content.splice(Math.max(0, o.index), 0, f.content);
+        break;
+      }
       case "change_typography":
         m.theme.font = o.value;
         break;
@@ -247,7 +344,17 @@ export function applyOperations(model, operations) {
         if (!f?.element) throw Error("Choose an element.");
         for (const [k, v] of Object.entries(o.value)) {
           if (
-            !["text", "href", "alt", "src", "price", "description"].includes(k)
+            ![
+              "text",
+              "href",
+              "alt",
+              "src",
+              "price",
+              "description",
+              "credit",
+              "creditUrl",
+              "imageQuery",
+            ].includes(k)
           )
             throw Error("That change is not supported.");
           f.element[k] = v;
@@ -415,6 +522,8 @@ export function renderDocument(
     endpoint = "",
     siteId = "",
     publicKey = "",
+    selected = "",
+    scrollY = 0,
   } = {},
 ) {
   validate(model);
@@ -425,8 +534,14 @@ export function renderDocument(
     ];
   const attrs = (id) =>
     editing && !preview ? ` data-clay-id="${esc(id)}" tabindex="0"` : "";
+  const photo = (e) =>
+    safeImageUrl(e.src)
+      ? `<figure class="item-photo"><img src="${esc(safeImageUrl(e.src))}" alt="${esc(e.alt || e.name || e.text)}" loading="lazy">${e.credit ? `<figcaption><a href="${esc(safeUrl(e.creditUrl))}" target="_blank" rel="noopener noreferrer">${esc(e.credit)}</a></figcaption>` : ""}</figure>`
+      : "";
+  const item = (e, a) =>
+    `<article class="item-card ${safeImageUrl(e.src) ? "has-photo" : ""}"${a}>${photo(e)}<div class="item-details"><h3 ${editing && !preview ? `data-clay-field="${e.name != null ? "name" : "text"}"` : ""}>${esc(e.name ?? e.text)}</h3><p ${editing && !preview ? 'data-clay-field="description"' : ""}>${esc(e.description)}</p>${e.price ? `<strong ${editing && !preview ? 'data-clay-field="price"' : ""}>${esc(e.price)}</strong>` : ""}</div></article>`;
   const element = (e, hero = false) => {
-    const a = attrs(e.id);
+    const a = attrs(e.id) + ` style="${styleText(e.style)}"`;
     switch (e.type) {
       case "heading":
         return `<${hero ? "h1" : "h2"}${a}>${esc(e.text).replace(/\n/g, "<br>")}</${hero ? "h1" : "h2"}>`;
@@ -437,36 +552,53 @@ export function renderDocument(
       case "button":
         return `<a class="button"${a} href="${esc(safeUrl(e.href))}">${esc(e.text)} <span aria-hidden="true">↗</span></a>`;
       case "item":
-        return `<article${a}><h3>${esc(e.text)}</h3><p>${esc(e.description)}</p><strong>${esc(e.price)}</strong></article>`;
+        return item(e, a);
       default:
         return "";
     }
   };
+  const catalogue = (s) => {
+    const cards = [
+      ...s.elements.filter((e) => e.type === "item"),
+      ...m.content,
+    ];
+    const order = s.itemOrder || cards.map((e) => e.id);
+    cards.sort(
+      (a, b) =>
+        (order.includes(a.id) ? order.indexOf(a.id) : 999) -
+        (order.includes(b.id) ? order.indexOf(b.id) : 999),
+    );
+    return (
+      '<div class="catalogue">' +
+      cards
+        .map((c) => item(c, attrs(c.id) + ` style="${styleText(c.style)}"`))
+        .join("") +
+      "</div>"
+    );
+  };
   const sections = p.sections
     .map(
       (s, i) =>
-        `<section id="${esc(s.id)}" class="section ${esc(s.type)} ${["split", "center", "grid", "stack"].includes(s.layout) ? s.layout : "stack"}"${attrs(s.id)} style="${s.background ? `background:${s.background};color:${readable(s.background, m.theme.text)};` : ""}--order:${i}"><div class="inside">${
-          s.type === "hero" && s.layout === "split"
-            ? `<div>${s.elements
-                .filter((e) => e.type !== "image")
-                .map((e) => element(e, true))
-                .join("")}</div>${s.elements
-                .filter((e) => e.type === "image")
-                .map((e) => element(e, true))
-                .join("")}`
-            : s.elements.map((e) => element(e, s.type === "hero")).join("")
-        }${s.type === "products" ? `<div class="products">${m.content.map((c) => `<article><h3>${esc(c.name)}</h3><p>${esc(c.description)}</p><strong>${esc(c.price)}</strong></article>`).join("")}</div>` : ""}${s.type === "contact" ? `<form id="contact"><label>Your name<input name="name" maxlength="150" required autocomplete="name"></label><label>Email address<input name="email" type="email" maxlength="250" required autocomplete="email"></label><label>How can we help?<textarea name="message" maxlength="5000" required></textarea></label><input name="website" tabindex="-1" autocomplete="off" class="honey" aria-hidden="true"><button class="button">Send message</button><p role="status" id="form-status"></p></form>` : ""}</div></section>`,
+        `<section id="${esc(s.id)}" class="section ${esc(s.type)} ${["split", "center", "grid", "stack", "list"].includes(s.layout) ? s.layout : "stack"}"${attrs(s.id)} style="${s.background ? `background:${s.background};color:${readable(s.background, m.theme.text)};` : ""}--order:${i}"><div class="inside">${s.elements
+          .filter((e) => s.type !== "products" || e.type !== "item")
+          .map((e) => element(e, s.type === "hero"))
+          .join(
+            "",
+          )}${s.type === "products" ? catalogue(s) : ""}${s.type === "contact" ? `<form id="contact"><label>Your name<input name="name" maxlength="150" required autocomplete="name"></label><label>Email address<input name="email" type="email" maxlength="250" required autocomplete="email"></label><label>How can we help?<textarea name="message" maxlength="5000" required></textarea></label><input name="website" tabindex="-1" autocomplete="off" class="honey" aria-hidden="true"><button class="button">Send message</button><p role="status" id="form-status"></p></form>` : ""}</div></section>`,
     )
     .join("");
-  const css = `*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:${m.theme.background};color:${readable(m.theme.background, m.theme.text)};font-family:'${m.theme.font}',sans-serif;font-size:16px;line-height:1.65}a{color:inherit;text-decoration:none}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid ${m.theme.accent};outline-offset:5px}header{max-width:1280px;margin:auto;padding:28px 6%;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{font-size:28px;font-weight:600;letter-spacing:-1px}nav{display:flex;gap:26px;flex-wrap:wrap;font-family:Inter,Arial,sans-serif;font-size:14px}h1{font-size:clamp(40px,5.5vw,78px);line-height:1.06;font-weight:400;letter-spacing:-.04em;margin:0 0 28px}h2{font-size:clamp(28px,3vw,44px);line-height:1.2;font-weight:400;letter-spacing:-.025em;margin:0 0 24px}h3{font-size:24px;line-height:1.3}p{max-width:620px;font-family:Inter,Arial,sans-serif;line-height:1.8;opacity:1}section{padding:${space} 6%}.inside{max-width:1120px;margin:auto}.split .inside{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}.hero img{width:100%;height:520px;object-fit:cover}.button{display:inline-flex;gap:24px;justify-content:center;align-items:center;background:${m.theme.accent};color:${readable(m.theme.accent, "#ffffff")};padding:14px 23px;border:0;border-radius:3px;font:500 15px Inter,Arial,sans-serif;cursor:pointer;margin-top:16px}.center{text-align:center}.center p{margin:20px auto}.gallery .inside,.products,.grid .inside{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:28px}.gallery h2,.grid h2{grid-column:1/-1}.photo-placeholder{min-height:260px;display:grid;place-items:center;background:#8881;border:1px dashed #8886;padding:24px;text-align:center;font:15px Inter,Arial,sans-serif}figure{margin:0;min-width:0}figcaption{font:12px Inter,Arial,sans-serif;line-height:1.5;margin-top:8px}figcaption a{text-decoration:underline}img{max-width:100%;object-fit:cover}.gallery img{height:320px;width:100%}article{padding:24px;border:1px solid currentColor}footer{padding:32px 6%;border-top:1px solid #8884;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font:14px Inter,Arial,sans-serif}form{max-width:560px;text-align:left}label{display:block;font:15px Inter,Arial,sans-serif;margin:20px 0}input,textarea{width:100%;padding:14px;border:1px solid #8888;background:transparent;color:inherit;font:inherit;margin-top:8px;border-radius:4px}textarea{min-height:120px}.honey{position:absolute;left:-9999px}[data-clay-id]{cursor:pointer}[data-clay-id]:hover{outline:2px solid #748da7;outline-offset:4px}[data-clay-id].selected{outline:2px solid #3f6791;outline-offset:4px}${progressive ? "section{animation:appear .7s both;animation-delay:calc(var(--order)*.32s)}@keyframes appear{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}" : ""}@media(max-width:650px){header{align-items:flex-start}.brand{font-size:24px}nav{gap:12px}.split .inside{grid-template-columns:1fr;gap:32px}section{padding:48px 6%}.hero img{height:360px}h1{font-size:44px}}@media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}`;
+  const css = `*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:${m.theme.background};color:${readable(m.theme.background, m.theme.text)};font-family:'${m.theme.font}',sans-serif;font-size:16px;line-height:1.65}a{color:inherit;text-decoration:none}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid ${m.theme.accent};outline-offset:5px}header{max-width:1280px;margin:auto;padding:28px 6%;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{font-size:28px;font-weight:600;letter-spacing:-1px}nav{display:flex;gap:26px;flex-wrap:wrap;font-family:Inter,Arial,sans-serif;font-size:14px}h1{font-size:clamp(40px,5.5vw,78px);line-height:1.06;font-weight:400;letter-spacing:-.04em;margin:0 0 28px}h2{font-size:clamp(28px,3vw,44px);line-height:1.2;font-weight:400;letter-spacing:-.025em;margin:0 0 24px}h3{font-size:24px;line-height:1.3}p{max-width:620px;font-family:Inter,Arial,sans-serif;line-height:1.8;opacity:1}section{padding:${space} 6%}.inside{max-width:1120px;margin:auto}.split .inside{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}.hero img{width:100%;height:520px;object-fit:cover}.button{display:inline-flex;gap:24px;justify-content:center;align-items:center;background:${m.theme.accent};color:${readable(m.theme.accent, "#ffffff")};padding:14px 23px;border:0;border-radius:3px;font:500 15px Inter,Arial,sans-serif;cursor:pointer;margin-top:16px}.center{text-align:center}.center p{margin:20px auto}.gallery .inside,.catalogue,.grid .inside{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:28px}.gallery h2,.grid h2{grid-column:1/-1}.photo-placeholder{min-height:260px;display:grid;place-items:center;background:#8881;border:1px dashed #8886;padding:24px;text-align:center;font:15px Inter,Arial,sans-serif}figure{margin:0;min-width:0}figcaption{font:12px Inter,Arial,sans-serif;line-height:1.5;margin-top:8px}figcaption a{text-decoration:underline}img{max-width:100%;object-fit:cover}.gallery img{height:320px;width:100%}article{padding:24px;border:1px solid currentColor}footer{padding:32px 6%;border-top:1px solid #8884;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font:14px Inter,Arial,sans-serif}form{max-width:560px;text-align:left}label{display:block;font:15px Inter,Arial,sans-serif;margin:20px 0}input,textarea{width:100%;padding:14px;border:1px solid #8888;background:transparent;color:inherit;font:inherit;margin-top:8px;border-radius:4px}textarea{min-height:120px}.honey{position:absolute;left:-9999px}[data-clay-id]{cursor:pointer}[data-clay-id]:hover{outline:2px solid #748da7;outline-offset:4px}[data-clay-id].selected{outline:2px solid #3f6791;outline-offset:4px}${progressive ? "section{animation:appear .7s both;animation-delay:calc(var(--order)*.32s)}@keyframes appear{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}" : ""}@media(max-width:650px){header{align-items:flex-start}.brand{font-size:24px}nav{gap:12px}.split .inside{grid-template-columns:1fr;gap:32px}section{padding:48px 6%}.hero img{height:360px}h1{font-size:44px}}@media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}`;
+  const layoutCss = `.inside>*{min-width:0}.hero.split .inside{display:block;column-count:2;column-gap:64px}.hero.split .inside>*{break-inside:avoid}.hero.split figure:not(:first-child){break-before:column}.catalogue{grid-column:1/-1;width:100%;margin-top:28px}.item-card{border:1px solid #8883;border-radius:12px;overflow:hidden;padding:0;background:#ffffff08;text-align:left}.item-details{padding:24px}.item-details h3{margin:0 0 12px}.item-details p{margin:0 0 16px}.item-card[style*="font-family"] p{font-family:inherit}.item-card[style*="font-size"] h3{font-size:1.4em}.item-card[style*="font-size"] p,.item-card[style*="font-size"] strong{font-size:inherit}.item-photo{margin:0}.item-photo img{display:block;width:100%;height:220px;object-fit:cover}.item-photo figcaption{padding:6px 12px;font-size:11px}.list .inside{display:flex;flex-direction:column;gap:24px}.list .catalogue{display:flex;flex-direction:column;gap:24px;margin-top:0}.list .item-card{width:100%}.list .has-photo{display:grid;grid-template-columns:minmax(160px,30%) 1fr;align-items:center}.list .item-photo img{height:220px}.stack .inside>*+*{margin-top:24px}@media(max-width:650px){.hero.split .inside{column-count:1}.list .has-photo{grid-template-columns:1fr}.item-photo img{height:220px}.catalogue{grid-template-columns:1fr}}`;
   const payload = JSON.stringify({ endpoint, siteId, publicKey }).replace(
     /</g,
     "\\u003c",
   );
   const script = editing
-    ? `const isPreview=${preview};document.addEventListener('click',e=>{const link=e.target.closest('[data-page]');if(link||!isPreview)e.preventDefault();const n=e.target.closest('[data-clay-id]');if(n&&!isPreview){document.querySelectorAll('.selected').forEach(x=>x.classList.remove('selected'));n.classList.add('selected');parent.postMessage({type:'clay-select',id:n.dataset.clayId},'*')}const a=e.target.closest('[data-page]');if(a)parent.postMessage({type:'clay-page',id:a.dataset.page},'*')});document.addEventListener('dblclick',e=>{const n=e.target.closest('[data-clay-id]');if(!isPreview&&n&&/^(H1|H2|H3|P)$/.test(n.tagName)){n.contentEditable='true';n.focus();n.addEventListener('blur',()=>{n.contentEditable='false';parent.postMessage({type:'clay-text',id:n.dataset.clayId,text:n.innerText},'*')},{once:true})}});document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.target.isContentEditable)e.target.click()})`
+    ? preview
+      ? canvasScript(true)
+      : canvasScript(false, { selected, scrollY })
     : `const cfg=${payload};const send=(type,data)=>fetch(cfg.endpoint,{method:'POST',headers:{'Content-Type':'application/json','apikey':cfg.publicKey},body:JSON.stringify({type,siteId:cfg.siteId,...data})});document.querySelector('#contact')?.addEventListener('submit',async e=>{e.preventDefault();const status=document.querySelector('#form-status'),button=e.target.querySelector('button');if(!cfg.endpoint){status.textContent='Online messages are not connected yet. Please contact us directly.';return}button.disabled=true;status.textContent='Sending…';try{const r=await send('contact',{...Object.fromEntries(new FormData(e.target))});if(!r.ok)throw Error();e.target.reset();status.textContent='Thank you. Your message has been sent.'}catch{status.textContent='Your message could not be sent. Please try again.'}finally{button.disabled=false}});if(cfg.endpoint&&navigator.doNotTrack!=='1'){let visitor;try{visitor=localStorage.getItem('clay-visitor');if(!visitor){visitor=crypto.randomUUID();localStorage.setItem('clay-visitor',visitor)}}catch{visitor=crypto.randomUUID()}const eventId=crypto.randomUUID(),started=Date.now();send('visit',{visitor,eventId,path:location.pathname,seconds:0}).catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')fetch(cfg.endpoint,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':cfg.publicKey},body:JSON.stringify({type:'visit',siteId:cfg.siteId,visitor,eventId,path:location.pathname,seconds:Math.min(1800,Math.round((Date.now()-started)/1000))})}).catch(()=>{})})}if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)} — ${esc(m.name)}</title><meta name="description" content="${esc(m.description)}"><meta name="theme-color" content="${m.theme.background}"><link rel="manifest" href="./manifest.webmanifest"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><style>${css}</style></head><body><header${attrs("navigation")}><a class="brand" href="./${m.pages[0].slug}.html">${esc(m.name)}</a><nav aria-label="Main navigation">${m.navigation.map((n) => `<a data-page="${esc(n.pageId)}" href="./${esc(m.pages.find((p) => p.id === n.pageId).slug)}.html">${esc(n.label)}</a>`).join("")}</nav></header><main>${sections}</main><footer><span>© ${new Date().getFullYear()} ${esc(m.name)}</span><span>${esc([m.address, m.phone, m.email].filter(Boolean).join(" · "))}</span></footer><script>${script}</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)} — ${esc(m.name)}</title><meta name="description" content="${esc(m.description)}"><meta name="theme-color" content="${m.theme.background}"><link rel="manifest" href="./manifest.webmanifest"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><style>${css}${layoutCss}${editing && !preview ? canvasCss : ""}</style></head><body><header${attrs("navigation")}><a class="brand" href="./${m.pages[0].slug}.html">${esc(m.name)}</a><nav aria-label="Main navigation">${m.navigation.map((n) => `<a data-page="${esc(n.pageId)}" href="./${esc(m.pages.find((p) => p.id === n.pageId).slug)}.html">${esc(n.label)}</a>`).join("")}</nav></header><main>${sections}</main><footer><span>© ${new Date().getFullYear()} ${esc(m.name)}</span><span>${esc([m.address, m.phone, m.email].filter(Boolean).join(" · "))}</span></footer><script>${script}</script></body></html>`;
 }
 export function exportFiles(m, options = {}) {
   const files = {};

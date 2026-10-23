@@ -1,4 +1,4 @@
-const CACHE = "clay-shell-v4";
+const CACHE = "clay-shell-v5";
 const ROOT = new URL("./", self.location).href;
 const FILES = [
   "",
@@ -7,6 +7,7 @@ const FILES = [
   "config.js",
   "js/app.js",
   "js/model.js",
+  "js/canvas.js",
   "js/api.js",
   "assets/logo.png",
   "assets/icon-192.png",

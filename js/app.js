@@ -425,7 +425,7 @@ function workspace(progressive = false) {
   const m = state.site.model;
   app.innerHTML =
     header("website") +
-    `<main id="main" class="workspace ${state.preview ? "previewing" : ""}"><div class="workspace-bar"><div class="website-title">${btn("pages", esc(m.name) + " <span>⌄</span>", "text-button")}<span id="save-status" role="status" aria-live="polite">${statusLabel()}</span></div><div class="device-controls" aria-label="Preview size">${btn("desktop", icon("desktop"), "icon-button " + (state.device === "desktop" ? "active" : ""), 'aria-label="Desktop preview"')}${btn("mobile", icon("mobile"), "icon-button " + (state.device === "mobile" ? "active" : ""), 'aria-label="Mobile preview"')}</div><div class="workspace-actions">${btn("history", "Previous versions", "text-button")}${btn("preview", state.preview ? "Back to editing" : "Preview", "outline")}${btn("publish", "Publish " + icon("arrow"), "primary")}</div></div><div class="canvas-surround"><div class="canvas-top"><div><span class="workspace-location">Website</span><span aria-hidden="true">/</span><span id="page-name">${esc(m.pages.find((p) => p.id === state.page)?.title || "Home")}</span><span> / </span>${btn("pages", "Pages", "text-button")}</div><div>${btn("undo", icon("undo"), "icon-button", 'aria-label="Undo" ' + (!state.undo.length ? "disabled" : ""))}${btn("redo", icon("redo"), "icon-button", 'aria-label="Redo" ' + (!state.redo.length ? "disabled" : ""))}${btn("tools", "Website tools", "text-button")}</div></div><div class="canvas ${state.device === "mobile" ? "mobile" : ""}"><iframe id="canvas" title="Your website" sandbox="allow-scripts"></iframe></div></div>${state.preview ? "" : `<div class="editor-dock"><div class="conversation-heading"><h2>Make it yours.</h2><p>Small changes. New possibilities.</p></div><div class="conversation" id="conversation" aria-live="polite">${state.messages.length ? state.messages.map((x) => `<p class="message ${x.role}">${esc(x.text)}</p>`).join("") : `<p class="message">Your website is ready to shape. Select anything on the right, or describe a change below.</p><div class="conversation-tools">${btn("pages", "Manage pages", "text-button")}${btn("sections", "Organize your content", "text-button")}${btn("tools", "Explore editing tools", "text-button")}</div>`}</div><div id="selection" class="selection-context"><span>Select a section or text to edit it.</span>${btn("sections", "Arrange sections", "text-button")}</div><form id="edit-form"><label class="sr-only" for="edit-prompt">Ask Clay to change anything</label><textarea id="edit-prompt" rows="1" maxlength="4000" placeholder="Ask Clay to change anything…" required></textarea><button class="send" aria-label="Apply change">${icon("send")}</button></form><div class="dock-footer"><span>${state.demo ? "Example website · try direct editing" : "Your ideas, brought to life."}</span><span>Double-click text to edit directly</span></div></div>`}</main>`;
+    `<main id="main" class="workspace ${state.preview ? "previewing" : ""}"><div class="workspace-bar"><div class="website-title">${btn("pages", esc(m.name) + " <span>⌄</span>", "text-button")}<span id="save-status" role="status" aria-live="polite">${statusLabel()}</span></div><div class="device-controls" aria-label="Preview size">${btn("desktop", icon("desktop"), "icon-button " + (state.device === "desktop" ? "active" : ""), 'aria-label="Desktop preview"')}${btn("mobile", icon("mobile"), "icon-button " + (state.device === "mobile" ? "active" : ""), 'aria-label="Mobile preview"')}</div><div class="workspace-actions">${btn("history", "Previous versions", "text-button")}${btn("preview", state.preview ? "Back to editing" : "Preview", "outline")}${btn("publish", "Publish " + icon("arrow"), "primary")}</div></div><div class="canvas-surround"><div class="canvas-top"><div><span class="workspace-location">Website</span><span aria-hidden="true">/</span><span id="page-name">${esc(m.pages.find((p) => p.id === state.page)?.title || "Home")}</span><span> / </span>${btn("pages", "Pages", "text-button")}</div><div>${btn("undo", icon("undo"), "icon-button", 'aria-label="Undo" ' + (!state.undo.length ? "disabled" : ""))}${btn("redo", icon("redo"), "icon-button", 'aria-label="Redo" ' + (!state.redo.length ? "disabled" : ""))}${btn("tools", "Website tools", "text-button")}</div></div><div class="canvas ${state.device === "mobile" ? "mobile" : ""}"><iframe id="canvas" title="Your website" sandbox="allow-scripts"></iframe></div></div>${state.preview ? "" : `<div class="editor-dock"><div class="conversation-heading"><h2>Make it yours.</h2><p>Small changes. New possibilities.</p></div><div class="conversation" id="conversation" aria-live="polite">${state.messages.length ? state.messages.map((x) => `<p class="message ${x.role}">${esc(x.text)}</p>`).join("") : `<p class="message">Your website is ready to shape. Select anything on the right, or describe a change below.</p><div class="conversation-tools">${btn("pages", "Manage pages", "text-button")}${btn("sections", "Organize your content", "text-button")}${btn("tools", "Explore editing tools", "text-button")}</div>`}</div><div id="selection" class="selection-context"><span>Select a section or text to edit it.</span>${btn("sections", "Arrange sections", "text-button")}</div><form id="edit-form"><label class="sr-only" for="edit-prompt">Ask Clay to change anything</label><textarea id="edit-prompt" rows="1" maxlength="4000" placeholder="Ask Clay to change anything…" required></textarea><button class="send" aria-label="Apply change">${icon("send")}</button></form><div class="dock-footer"><span>${state.demo ? "Example website · try direct editing" : "Your ideas, brought to life."}</span><span>Hover to edit · drag ⠿ to rearrange</span></div></div>`}</main>`;
   renderCanvas(progressive);
   if ($("#edit-form"))
     $("#edit-form").onsubmit = async (e) => {
@@ -460,11 +460,12 @@ function workspace(progressive = false) {
           selected: state.selected,
           pageId: state.page,
         });
-        state.messages.push({
-          role: "clay",
-          text: r.question || r.summary || "Your website has been updated.",
-        });
         if (r.question) {
+          state.messages.push({ role: "clay", text: r.question });
+          $("#conversation").insertAdjacentHTML(
+            "beforeend",
+            `<p class="message clay">${esc(r.question)}</p>`,
+          );
           showPanel("A little more detail", `<p>${esc(r.question)}</p>`);
           return;
         }
@@ -474,23 +475,39 @@ function workspace(progressive = false) {
           ops.filter((o) => o.type !== "publish_website"),
           r.summary || prompt,
         );
+        state.messages.push({
+          role: "clay",
+          text: r.summary || "Your website has been updated.",
+        });
+        $("#conversation")?.insertAdjacentHTML(
+          "beforeend",
+          `<p class="message clay">${esc(r.summary || "Your website has been updated.")}</p>`,
+        );
+        $("#edit-prompt").value = "";
         if (publish) await publishSite();
         else toast(r.summary || "Your website has been updated.");
       });
     };
 }
 function renderCanvas(progressive = false) {
-  $("#canvas").srcdoc = renderDocument(state.site.model, state.page, {
+  const canvas = $("#canvas");
+  canvas.dataset.revision = String(state.site.revision || 0);
+  canvas.onload = () => {
+    canvas.dataset.ready = "true";
+  };
+  canvas.srcdoc = renderDocument(state.site.model, state.page, {
     editing: true,
     preview: state.preview,
     progressive,
+    selected: state.selected,
+    scrollY: state.canvasScroll || 0,
   });
 }
 function selection() {
   const f = locate(state.site.model, state.selected);
   if (!f) return;
   $("#selection").innerHTML =
-    `<span><i></i> ${esc(f.element ? f.element.type : f.section ? f.section.type + " section" : state.selected === "navigation" ? "Navigation" : "Page")} selected</span><div>${btn("edit-selected", "Edit", "text-button")}${btn("restore-selected", "Previous versions", "text-button")}${btn("clear-selection", icon("close"), "icon-button", 'aria-label="Clear selection"')}</div>`;
+    `<span><i></i> ${esc(f.content ? "Item" : f.element ? f.element.type : f.section ? f.section.type + " section" : state.selected === "navigation" ? "Navigation" : "Page")} selected</span><div>${btn("edit-selected", "Edit", "text-button")}${btn("restore-selected", "Previous versions", "text-button")}${btn("clear-selection", icon("close"), "icon-button", 'aria-label="Clear selection"')}</div>`;
 }
 window.addEventListener("message", async (e) => {
   if (e.source !== $("#canvas")?.contentWindow || !state.site) return;
@@ -500,22 +517,46 @@ window.addEventListener("message", async (e) => {
     state.selected = d.id;
     selection();
   }
-  if (d?.type === "clay-text" && locate(state.site.model, d.id)?.element) {
-    try {
-      await change(
-        [{ type: "edit_text", target: d.id, value: d.text }],
-        "Edited text",
-      );
-    } catch (err) {
-      toast(errorText(err));
-      renderCanvas();
-    }
+  if (d?.type === "clay-viewport" && Number.isFinite(d.scrollY))
+    state.canvasScroll = Math.max(0, d.scrollY);
+  if (d?.type === "clay-history") run(() => travel(!!d.redo));
+  if (d?.type === "clay-edit" && locate(state.site.model, d.id)) {
+    state.selected = d.id;
+    selection();
+    if (d.mode === "style") elementStyle();
+    else if (d.mode === "move") moveSelectedPanel();
+    else editSelected();
   }
+  if (d?.type === "clay-text") {
+    const f = locate(state.site.model, d.id);
+    const field = d.field || "text";
+    if (
+      (f?.element || f?.content) &&
+      ["text", "name", "description", "price"].includes(field) &&
+      typeof d.text === "string"
+    )
+      run(() =>
+        change(
+          [
+            {
+              type: f.content ? "update_content" : "update_element",
+              target: d.id,
+              value: { [field]: d.text },
+            },
+          ],
+          "Edited text",
+        ),
+      );
+  }
+  if (d?.type === "clay-shift" && [-1, 1].includes(d.delta))
+    run(() => shiftCanvas(d.id, d.delta));
+  if (d?.type === "clay-move") run(() => dropCanvas(d));
   if (
     d?.type === "clay-page" &&
     state.site.model.pages.some((p) => p.id === d.id)
   ) {
     state.page = d.id;
+    state.canvasScroll = 0;
     state.selected = null;
     workspace();
   }
@@ -698,6 +739,10 @@ function sections() {
 function editSelected() {
   const f = locate(state.site.model, state.selected);
   if (!f) return;
+  if (f.content) {
+    contentForm(f.content.id);
+    return;
+  }
   if (state.selected === "navigation") {
     navigation();
     return;
@@ -705,7 +750,7 @@ function editSelected() {
   if (!f.element) {
     showPanel(
       "Edit section",
-      `<p>Select the text, image, or button you want to change.</p>${(f.section?.elements || []).map((e) => btn("choose-element", esc((e.text || e.alt || e.type).slice(0, 70)), "tool-row", `data-id="${e.id}"`)).join("")}<form id="section-style" class="stack-form"><label>Layout<select name="layout">${["stack", "split", "center", "grid"].map((l) => `<option ${f.section.layout === l ? "selected" : ""}>${l}</option>`).join("")}</select></label><label class="color-label">Section colour<input type="color" name="background" value="${f.section.background || state.site.model.theme.background}"></label><button class="outline">Apply to section</button></form><form id="element-add" class="stack-form"><label>Add content<select name="type"><option value="text">Text</option><option value="heading">Heading</option><option value="image">Image</option><option value="button">Button</option><option value="item">Service or item</option></select></label><button class="outline">Add content ＋</button></form>`,
+      `<p>Select the text, image, or button you want to change.</p>${(f.section?.elements || []).map((e) => btn("choose-element", esc((e.text || e.alt || e.type).slice(0, 70)), "tool-row", `data-id="${e.id}"`)).join("")}<form id="section-style" class="stack-form"><label>Layout<select name="layout">${["stack", "split", "center", "grid", "list"].map((l) => `<option ${f.section.layout === l ? "selected" : ""}>${l}</option>`).join("")}</select></label><label class="color-label">Section colour<input type="color" name="background" value="${f.section.background || state.site.model.theme.background}"></label><button class="outline">Apply to section</button></form><form id="element-add" class="stack-form"><label>Add content<select name="type"><option value="text">Text</option><option value="heading">Heading</option><option value="image">Image</option><option value="button">Button</option><option value="item">Service or item</option></select></label><button class="outline">Add content ＋</button></form>`,
     );
     $("#section-style").onsubmit = (e) => {
       e.preventDefault();
@@ -752,14 +797,14 @@ function editSelected() {
   const el = f.element;
   showPanel(
     "Edit " + el.type,
-    `<form id="element-form" class="stack-form">${el.type === "image" ? `<label>Choose a photo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label><details><summary>Or use an image link</summary><label>Image link<input name="src" value="${esc(el.src)}" placeholder="https://…"></label></details><label>Describe the image<input name="alt" value="${esc(el.alt)}" required></label>` : `<label>${el.type === "button" ? "Button label" : "Text"}<textarea name="text" required>${esc(el.text)}</textarea></label>${el.type === "button" ? `<label>Where should it go?<input name="href" value="${esc(el.href)}" placeholder="https://… or #section"></label>` : ""}${el.type === "item" ? `<label>Description<textarea name="description">${esc(el.description)}</textarea></label><label>Price<input name="price" value="${esc(el.price)}"></label>` : ""}`}<button class="primary">Save changes</button></form><div class="element-order">${btn("element-up", "Move earlier", "outline")}${btn("element-down", "Move later", "outline")}${btn("delete-element", "Remove content", "danger-text")}</div>`,
+    `<form id="element-form" class="stack-form">${el.type === "image" ? `<label>Choose a photo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label><details><summary>Or use an image link</summary><label>Image link<input name="src" value="${esc(el.src)}" placeholder="https://…"></label></details><label>Describe the image<input name="alt" value="${esc(el.alt)}" required></label>` : `<label>${el.type === "button" ? "Button label" : "Text"}<textarea name="text" required>${esc(el.text)}</textarea></label>${el.type === "button" ? `<label>Where should it go?<input name="href" value="${esc(el.href)}" placeholder="https://… or #section"></label>` : ""}${el.type === "item" ? `<label>Choose a photo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label><label>Image link<input name="src" value="${esc(el.src || "")}" placeholder="https://…"></label><label>Describe the image<input name="alt" value="${esc(el.alt || el.text)}"></label><label>Description<textarea name="description">${esc(el.description)}</textarea></label><label>Price<input name="price" value="${esc(el.price)}"></label>` : ""}`}<button class="primary">Save changes</button></form><div class="element-order">${btn("element-style", "Colour & type", "outline")}${btn("element-move", "Move to…", "outline")}${btn("element-up", "Move earlier", "outline")}${btn("element-down", "Move later", "outline")}${btn("delete-element", "Remove content", "danger-text")}</div>`,
   );
   $("#element-form").onsubmit = (ev) => {
     ev.preventDefault();
     run(async () => {
       const form = new FormData(ev.target),
         value = Object.fromEntries(form);
-      if (el.type === "image") {
+      if (["image", "item"].includes(el.type)) {
         const photo = form.get("photo");
         if (photo?.size) value.src = await compressPhoto(photo);
         delete value.photo;
@@ -816,25 +861,27 @@ function contentForm(id) {
   };
   showPanel(
     id ? "Edit item" : "Add an item",
-    `<form id="content-form" class="stack-form"><label>Name<input name="name" value="${esc(c.name)}" required maxlength="200"></label><label>Description<textarea name="description">${esc(c.description)}</textarea></label><label>Price<input name="price" value="${esc(c.price)}" placeholder="₹45,000"></label><button class="primary">Save item</button></form>`,
+    `<form id="content-form" class="stack-form"><label>Choose a photo<input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></label><label>Image link<input name="src" value="${esc(c.src || "")}" placeholder="https://…"></label><label>Describe the image<input name="alt" value="${esc(c.alt || c.name)}"></label><label>Name<input name="name" value="${esc(c.name)}" required maxlength="200"></label><label>Description<textarea name="description">${esc(c.description)}</textarea></label><label>Price<input name="price" value="${esc(c.price)}" placeholder="₹45,000"></label><button class="primary">Save item</button></form>${id ? btn("element-style", "Colour & type", "outline") + btn("element-move", "Move to…", "outline") : ""}`,
   );
   $("#content-form").onsubmit = (e) => {
     e.preventDefault();
-    run(() =>
-      change(
+    run(async () => {
+      const form = new FormData(e.target),
+        value = Object.fromEntries(form);
+      if (value.photo?.size) value.src = await compressPhoto(value.photo);
+      delete value.photo;
+      await change(
         [
           {
             type: id ? "update_content" : "create_content",
             target: id,
-            value: {
-              ...Object.fromEntries(new FormData(e.target)),
-              id: id || uid(),
-            },
+            value: { ...value, id: id || uid() },
           },
         ],
         id ? "Updated item" : "Added item",
-      ).then(content),
-    );
+      );
+      panel.close();
+    });
   };
 }
 function navigation() {
@@ -1540,6 +1587,8 @@ const actions = {
       "Improve the " + b.dataset.value.toLowerCase() + ": ";
     $("#edit-prompt").focus();
   },
+  "element-style": () => elementStyle(),
+  "element-move": () => moveSelectedPanel(),
   "delete-site": () => {
     showPanel(
       "Delete your website?",
@@ -1581,26 +1630,226 @@ const actions = {
     home();
   },
 };
-async function moveElement(delta) {
+function elementStyle() {
   const f = locate(state.site.model, state.selected);
-  if (!f?.element) return;
-  const index = f.section.elements.findIndex((e) => e.id === f.element.id);
+  if (!f?.element && !f?.content) {
+    editSelected();
+    return;
+  }
+  const st = f.node.style || {},
+    t = state.site.model.theme;
+  showPanel(
+    "Style this content",
+    `<form id="element-style-form" class="stack-form"><p>These changes apply only to your selection.</p><label class="color-label">Text colour<input name="color" type="color" value="${st.color || t.text}"></label><label class="color-label">Background colour<input name="background" type="color" value="${st.background || f.section?.background || t.background}"></label><label>Text size<input name="fontSize" type="number" min="12" max="100" value="${st.fontSize || (f.element?.type === "heading" ? 44 : 16)}"></label><label>Typeface<select name="fontFamily">${fonts.map((font) => `<option ${(st.fontFamily || t.font) === font ? "selected" : ""}>${font}</option>`).join("")}</select></label><label>Alignment<select name="textAlign">${["left", "center", "right"].map((x) => `<option ${st.textAlign === x ? "selected" : ""}>${x}</option>`).join("")}</select></label><label>Space inside<input name="padding" type="number" min="0" max="100" value="${st.padding || 0}"></label><button class="primary">Apply to selection</button></form>`,
+  );
+  const initialStyle = Object.fromEntries(
+    new FormData($("#element-style-form")),
+  );
+  $("#element-style-form").onsubmit = (e) => {
+    e.preventDefault();
+    const value = Object.fromEntries(
+      [...new FormData(e.target)].filter(
+        ([key, val]) => val !== initialStyle[key],
+      ),
+    );
+    if (value.fontSize != null) value.fontSize = Number(value.fontSize);
+    if (value.padding != null) value.padding = Number(value.padding);
+    if (!Object.keys(value).length) {
+      panel.close();
+      return;
+    }
+    run(async () => {
+      await change(
+        [{ type: "update_style", target: f.node.id, value }],
+        "Styled selected content",
+      );
+      panel.close();
+    });
+  };
+}
+function moveDetails(f) {
+  if (f?.content)
+    return { type: "move_content", list: state.site.model.content };
+  if (f?.element)
+    return {
+      type: "move_element",
+      list: f.section.elements,
+      sectionId: f.section.id,
+    };
+  if (f?.section)
+    return { type: "move_section", list: f.page.sections, pageId: f.page.id };
+  throw Error("Choose content or a section to move.");
+}
+async function shiftCanvas(id, delta) {
+  const f = locate(state.site.model, id),
+    details = moveDetails(f);
+  const section =
+    f.section?.type === "products"
+      ? f.section
+      : f.content
+        ? state.site.model.pages
+            .find((p) => p.id === state.page)
+            ?.sections.find((s) => s.type === "products")
+        : null;
+  if (section && (f.content || f.element?.type === "item")) {
+    const ids = [
+      ...section.elements.filter((e) => e.type === "item"),
+      ...state.site.model.content,
+    ].map((e) => e.id);
+    const order = [...(section.itemOrder || []), ...ids].filter(
+      (id, i, all) => ids.includes(id) && all.indexOf(id) === i,
+    );
+    const index = order.indexOf(id),
+      next = Math.max(0, Math.min(order.length - 1, index + delta));
+    if (index === next) return;
+    order.splice(index, 1);
+    order.splice(next, 0, id);
+    await change(
+      [{ type: "reorder_items", target: section.id, value: order }],
+      "Moved menu item",
+    );
+    return;
+  }
+  const index = details.list.findIndex((n) => n.id === id),
+    next = Math.max(0, Math.min(details.list.length - 1, index + delta));
+  if (index === next) return;
+  const { list, ...operation } = details;
+  await change([{ ...operation, target: id, index: next }], "Moved content");
+}
+async function dropCanvas(d) {
+  const f = locate(state.site.model, d.id),
+    dest = locate(state.site.model, d.destination);
+  if (!f || !dest || d.id === d.destination) return;
+  const section =
+    locate(state.site.model, d.sectionId)?.section || dest.section;
+  if (
+    section?.type === "products" &&
+    (f.content || f.element?.type === "item") &&
+    (dest.content || dest.element?.type === "item") &&
+    (!f.element || f.section.id === section.id)
+  ) {
+    const ids = [
+      ...section.elements.filter((e) => e.type === "item"),
+      ...state.site.model.content,
+    ].map((e) => e.id);
+    const order = [...(section.itemOrder || []), ...ids].filter(
+      (id, i, all) => ids.includes(id) && all.indexOf(id) === i && id !== d.id,
+    );
+    const index = order.indexOf(d.destination);
+    if (index < 0) return;
+    order.splice(index + (d.after ? 1 : 0), 0, d.id);
+    await change(
+      [{ type: "reorder_items", target: section.id, value: order }],
+      "Rearranged menu items",
+    );
+    return;
+  }
+  let op, list;
+  if (f.content && dest.content) {
+    op = { type: "move_content" };
+    list = state.site.model.content;
+  } else if (f.element && dest.section && !dest.content) {
+    op = { type: "move_element", sectionId: dest.section.id };
+    list = dest.section.elements;
+  } else if (f.section && !f.element && dest.section && !dest.element) {
+    op = { type: "move_section", pageId: dest.page.id };
+    list = dest.page.sections;
+  } else
+    throw Error("Move items within their list, or content into a section.");
+  list = list.filter((n) => n.id !== d.id);
+  const i = list.findIndex((n) => n.id === d.destination);
   await change(
     [
       {
-        type: "move_element",
-        target: f.element.id,
-        sectionId: f.section.id,
-        index: Math.max(
-          0,
-          Math.min(f.section.elements.length - 1, index + delta),
-        ),
+        ...op,
+        target: d.id,
+        index: i < 0 ? list.length : i + (d.after ? 1 : 0),
       },
     ],
-    "Moved content",
+    "Rearranged content",
   );
+}
+function moveSelectedPanel() {
+  const f = locate(state.site.model, state.selected),
+    details = moveDetails(f);
+  const itemSection =
+    f.section?.type === "products" && f.element?.type === "item"
+      ? f.section
+      : f.content
+        ? state.site.model.pages
+            .find((p) => p.id === state.page)
+            ?.sections.find((s) => s.type === "products")
+        : null;
+  if (itemSection) {
+    const nodes = [
+      ...itemSection.elements.filter((e) => e.type === "item"),
+      ...state.site.model.content,
+    ];
+    details.list = [...nodes].sort(
+      (a, b) =>
+        (itemSection.itemOrder?.indexOf(a.id) ?? nodes.indexOf(a)) -
+        (itemSection.itemOrder?.indexOf(b.id) ?? nodes.indexOf(b)),
+    );
+  }
+  const destinations = f.element
+    ? state.site.model.pages.flatMap((p) =>
+        p.sections.map((section) => ({
+          id: section.id,
+          label:
+            p.title +
+            " · " +
+            (section.elements.find((e) => e.type === "heading")?.text ||
+              section.type),
+          length: section.elements.length,
+        })),
+      )
+    : [];
+  showPanel(
+    "Move content",
+    `<form id="move-form" class="stack-form"><p>Drag the six-dot handle on your website, or choose a position here. The layout stays responsive.</p>${f.element ? `<label>Section<select name="sectionId">${destinations.map((s) => `<option value="${esc(s.id)}" ${s.id === f.section.id ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select></label>` : ""}<label>Position<input name="position" type="number" min="1" max="${Math.max(details.list.length, ...destinations.map((s) => s.length + 1))}" value="${details.list.findIndex((n) => n.id === f.node.id) + 1}" required></label><button class="primary">Move here</button></form>`,
+  );
+  $("#move-form").onsubmit = (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target),
+      { list, ...op } = details;
+    if (
+      itemSection &&
+      (!data.get("sectionId") || data.get("sectionId") === itemSection.id)
+    ) {
+      const order = details.list
+        .map((n) => n.id)
+        .filter((id) => id !== f.node.id);
+      order.splice(Number(data.get("position")) - 1, 0, f.node.id);
+      run(async () => {
+        await change(
+          [{ type: "reorder_items", target: itemSection.id, value: order }],
+          "Moved menu item",
+        );
+        panel.close();
+      });
+      return;
+    }
+    run(async () => {
+      await change(
+        [
+          {
+            ...op,
+            target: f.node.id,
+            sectionId: data.get("sectionId") || op.sectionId,
+            index: Number(data.get("position")) - 1,
+          },
+        ],
+        "Moved content",
+      );
+      panel.close();
+    });
+  };
+}
+async function moveElement(delta) {
+  await shiftCanvas(state.selected, delta);
   editSelected();
 }
+
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-action]");
   if (b) {

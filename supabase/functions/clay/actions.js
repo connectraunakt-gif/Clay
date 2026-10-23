@@ -7,6 +7,9 @@ const allowed = new Set([
   "update_section",
   "move_section",
   "move_element",
+  "move_content",
+  "reorder_items",
+  "update_style",
   "edit_text",
   "replace_image",
   "change_colors",
@@ -23,7 +26,7 @@ const allowed = new Set([
   "publish_website",
 ]);
 export function normalizeOperations(operations) {
-  if (!Array.isArray(operations) || operations.length > 100)
+  if (!Array.isArray(operations) || operations.length > 60)
     throw Error("Clay could not understand that change. Please try again.");
   return operations.map((operation) => {
     if (!operation || typeof operation !== "object" || Array.isArray(operation))

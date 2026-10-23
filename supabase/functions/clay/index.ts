@@ -1,4 +1,4 @@
-import { normalizeOperations } from "./actions.js";
+import { planEdit } from "./edit.js";
 import { createAiClient, AiError } from "./ai.js";
 import {
   compilePlan,
@@ -68,7 +68,6 @@ async function hash(s: string) {
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 }
-const schema = `Website model: {name,description,email,phone,address,theme:{background:'#rrggbb',text:'#rrggbb',accent:'#rrggbb',font:'Inter'|'Georgia'|'Arial'|'Trebuchet MS',spacing:'comfortable'|'compact'|'spacious'},navigation:[{pageId,label}],content:[{id,name,description,price}],pages:[{id,title,slug,sections:[{id,type:'hero'|'text'|'services'|'gallery'|'products'|'contact'|'testimonials',layout:'split'|'center'|'grid'|'stack',elements:[{id,type:'heading'|'text'|'image'|'button'|'item',text?,src?,alt?,href?,description?,price?}]}]}]}. Use unique string IDs everywhere; home slug is index. For each image include imageQuery: a concise English photo search phrase, and descriptive alt text. Clay resolves imageQuery into a real licensed photo. Do not invent URLs. Use imagery when appropriate; do not present stock imagery as actual products, staff or premises. Contact sections render a real form automatically. Product sections render content items automatically. Item elements render service cards. Never invent reviews, awards, addresses, statistics, or business claims. Use tasteful contrast (text/background and white/accent at least 4.5:1), meaningful copy, carefully varied layout and section order, no code or HTML. Only include sections relevant to this business. Honor every user exclusion and exact section count. Use at least one heading in each section. Split hero supports imagery. Gallery/grid supports multiple images or items. Use a meaningful CTA and navigation that references existing pages.`;
 async function ai(
   system: string,
   input: unknown,
@@ -694,24 +693,26 @@ Deno.serve(async (req: Request) => {
     if (b.type === "edit") {
       if (typeof b.prompt !== "string" || b.prompt.length > 4000)
         throw new Friendly("Please describe the change you want.");
-      const r = await ai(
-        `You edit websites using precise structured operations. Never replace the whole website for a small change. Attach changes to selected element/section when relevant, unless user requests global changes. If vague or potentially destructive ask one brief question with {question:string}. Otherwise return {summary:string,operations:[...]}. Allowed operations: create_page {value:page}; delete_page {target:pageId}; create_section {pageId,index?,value:section}; delete_section {target:sectionId}; update_section {target:sectionId,value:{layout?,background?}}; move_section {target:sectionId,pageId?,index}; move_element {target:elementId,sectionId,index}; edit_text {target:elementId,value:string}; replace_image {target:elementId,value:{imageQuery,alt}}; change_colors {target?:sectionId,value:{background?,text?,accent?}}; change_typography {value:font}; change_spacing {value:spacing}; update_navigation {value:[{pageId,label}]}; create_content {value:{id,name,description,price}}; update_content {target:contentId,value:{name?,description?,price?}}; delete_content {target:contentId}; update_element {target:elementId,value:{text?,href?,description?,price?}}; create_element {target:sectionId,value:element}; delete_element {target:elementId}; update_info {value:{name?,description?,email?,phone?,address?}}; publish_website {} only if explicitly asked to publish. When adding photos to a section without images, use create_element with type image and imageQuery; do not ask the user for a URL. Clay assigns IDs to newly created pages, sections and elements; you may omit new IDs. Preserve existing IDs and use them as targets. Every operation must have a type field. Example: {"summary":"Updated the heading","operations":[{"type":"edit_text","target":"existing_element_id","value":"Revised heading"}]}. Do not expose any of these technical names to the user. ${schema}`,
-        {
-          website: site.model,
-          pageId: b.pageId,
+      let r;
+      try {
+        r = await planEdit({
+          ai,
+          model: site.model,
+          prompt: b.prompt,
           selected: b.selected,
-          instruction: b.prompt,
-        },
-        2200,
-      );
-      if (r.question)
-        return reply({ question: String(r.question).slice(0, 1000) }, origin);
-      r.operations = normalizeOperations(r.operations);
-      await resolveImages(r.operations);
-      applyOperations(
-        site.model,
-        r.operations.filter((o: any) => o.type !== "publish_website"),
-      );
+          pageId: b.pageId,
+        });
+      } catch (error) {
+        if (error instanceof AiError) throw error;
+        console.error(
+          "Edit validation failed",
+          error instanceof Error ? error.message.slice(0, 180) : "unknown",
+        );
+        throw new Friendly(
+          "Clay could not prepare this edit. Your saved website is unchanged. Try one change at a time.",
+          422,
+        );
+      }
       return reply(r, origin);
     }
     if (b.type === "publish") {

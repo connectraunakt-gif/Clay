@@ -1,4 +1,4 @@
-const CACHE = "clay-shell-v3";
+const CACHE = "clay-shell-v4";
 const ROOT = new URL("./", self.location).href;
 const FILES = [
   "",
@@ -15,7 +15,11 @@ const FILES = [
 ];
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(FILES.map((p) => ROOT + p))),
+    caches
+      .open(CACHE)
+      .then((c) =>
+        c.addAll(FILES.map((p) => new Request(ROOT + p, { cache: "reload" }))),
+      ),
   );
   self.skipWaiting();
 });
@@ -35,7 +39,7 @@ self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== "GET" || u.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "no-cache" })
       .then((r) => {
         if (r.ok && FILES.some((p) => ROOT + p === u.href)) {
           const copy = r.clone();

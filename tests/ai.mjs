@@ -114,7 +114,7 @@ try {
       siteId: site.id,
       pageId: site.model.pages[0].id,
       selected: target.id,
-      prompt: "Make this heading more concise. Change only this heading.",
+      prompt: "Change only this heading to exactly: Made to fit your world.",
     },
     token,
     pub,
@@ -127,7 +127,7 @@ try {
     ),
   );
   const revised = applyOperations(site.model, edit.data.operations);
-  assert.notEqual(locate(revised, target.id).node.text, target.text);
+  assert.equal(locate(revised, target.id).node.text, "Made to fit your world.");
   console.log("PASS real selection-aware AI edit");
   const photo = await call(
     "/functions/v1/clay",
@@ -137,17 +137,23 @@ try {
       pageId: site.model.pages[0].id,
       selected: site.model.pages[0].sections[0].id,
       prompt:
-        "Add a photo of wooden furniture to this hero section. Keep all existing text.",
+        "Add exactly one additional photo of wooden furniture to this hero section. Do not replace an existing image. Keep all existing text.",
     },
     token,
     pub,
   );
   assert.equal(photo.status, 200, JSON.stringify(photo.data));
+  assert.ok(photo.data.operations.length > 0);
+  const originalImages = site.model.pages
+    .flatMap((p) => p.sections)
+    .flatMap((s) => s.elements)
+    .filter((e) => e.type === "image").length;
   const withPhoto = applyOperations(site.model, photo.data.operations);
   const images = withPhoto.pages
     .flatMap((p) => p.sections)
     .flatMap((s) => s.elements)
     .filter((e) => e.type === "image");
+  assert.equal(images.length, originalImages + 1);
   assert.ok(
     images.some(
       (e) =>

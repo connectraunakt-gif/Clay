@@ -83,7 +83,8 @@ try {
     token: users[0].token,
     key: pub,
   });
-  assert.equal(ownJob.data.job.user_id, users[0].id);
+  assert.ok(ownJob.data.job.id);
+  assert.equal(ownJob.data.job.user_id, undefined);
   const otherJob = await request("/functions/v1/clay", {
     method: "POST",
     body: { type: "generation_status" },
@@ -96,7 +97,28 @@ try {
     key: pub,
   });
   assert.ok(rawJobs.status >= 400);
-  console.log("PASS generation-job ownership and direct table denial");
+  const deniedBrief = await request("/functions/v1/clay", {
+    method: "POST",
+    body: {
+      type: "generation_status",
+      jobId: ownJob.data.job.id,
+      includeBrief: true,
+    },
+    token: users[1].token,
+    key: pub,
+  });
+  assert.equal(deniedBrief.data.job, null);
+  assert.equal(deniedBrief.data.brief, null);
+  const deniedFinish = await request("/rest/v1/rpc/finish_generation", {
+    method: "POST",
+    body: { p_job: ownJob.data.job.id, p_model: example() },
+    token: users[0].token,
+    key: pub,
+  });
+  assert.ok(deniedFinish.status >= 400);
+  console.log(
+    "PASS generation-job ownership, brief isolation and service-only completion",
+  );
   const denied = await call(1, "save_website", {
     p_id: site.id,
     p_model: example(),

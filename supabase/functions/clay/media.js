@@ -4,7 +4,7 @@ const clean = (v = "") =>
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .slice(0, 240);
-export async function findPhoto(query, fetcher = fetch) {
+export async function findPhoto(query, fetcher = fetch, signal) {
   const p = new URLSearchParams({
     action: "query",
     generator: "search",
@@ -20,7 +20,9 @@ export async function findPhoto(query, fetcher = fetch) {
     headers: {
       "User-Agent": "Clay/1.0 (https://connectraunakt-gif.github.io/Clay/)",
     },
-    signal: AbortSignal.timeout(15000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(6500)])
+      : AbortSignal.timeout(6500),
   });
   if (!r.ok)
     throw Error(
@@ -53,21 +55,90 @@ export async function findPhoto(query, fetcher = fetch) {
     "No suitable photo was found. Try a simpler photo description or upload your own.",
   );
 }
-export async function resolveImages(value, fetcher = fetch) {
-  const walk = async (node) => {
+const stockPhotos = [
+  [
+    /coffee|cafe|café|espresso|pastry|breakfast/i,
+    "photo-1442512595331-e89e73853f31",
+    "A cup of coffee",
+  ],
+  [
+    /furniture|wood|interior|showroom/i,
+    "photo-1494438639946-1ebd1d20bf85",
+    "Interior design inspiration",
+  ],
+  [
+    /flower|florist|garden|bloom/i,
+    "photo-1490750967868-88aa4486c946",
+    "Seasonal flowers",
+  ],
+  [
+    /restaurant|food|meal|kitchen|dining/i,
+    "photo-1498837167922-ddd27525d352",
+    "Fresh food ingredients",
+  ],
+];
+export function fallbackPhoto(query) {
+  const match = stockPhotos.find(([pattern]) => pattern.test(query));
+  return match
+    ? {
+        src:
+          "https://images.unsplash.com/" +
+          match[1] +
+          "?auto=format&fit=crop&w=1200&q=80",
+        alt: match[2],
+        credit: "Photo: Unsplash",
+        creditUrl: "https://unsplash.com/license",
+      }
+    : null;
+}
+export async function resolveImages(
+  value,
+  fetcher = fetch,
+  { strict = true, warnings = [] } = {},
+) {
+  const cache = new Map(),
+    signal = AbortSignal.timeout(18000);
+  const nodes = [];
+  const collect = (node) => {
     if (!node || typeof node !== "object") return;
-    if (node.imageQuery && typeof node.imageQuery === "string") {
-      const alt = node.alt;
-      Object.assign(node, await findPhoto(node.imageQuery, fetcher));
-      if (alt) node.alt = alt;
-      delete node.imageQuery;
-    }
-    await Promise.all(
-      Object.values(node)
-        .filter((child) => child && typeof child === "object")
-        .map(walk),
-    );
+    if (typeof node.imageQuery === "string" && node.imageQuery.trim())
+      nodes.push(node);
+    for (const child of Object.values(node))
+      if (child && typeof child === "object") collect(child);
   };
-  await walk(value);
+  collect(value);
+  let next = 0;
+  const getPhoto = (query) => {
+    if (!cache.has(query))
+      cache.set(
+        query,
+        findPhoto(query, fetcher, signal).catch((e) => {
+          const fallback = fallbackPhoto(query);
+          if (fallback) return fallback;
+          throw e;
+        }),
+      );
+    return cache.get(query);
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(3, nodes.length) }, async () => {
+      while (next < nodes.length) {
+        const node = nodes[next++],
+          alt = node.alt;
+        try {
+          Object.assign(node, await getPhoto(node.imageQuery));
+          if (alt) node.alt = alt;
+          delete node.imageQuery;
+        } catch (e) {
+          if (strict) throw e;
+          node.src = "";
+          if (!warnings.length)
+            warnings.push(
+              "Some photos could not be loaded. You can add your own in the editor.",
+            );
+        }
+      }
+    }),
+  );
   return value;
 }

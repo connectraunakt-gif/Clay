@@ -33,6 +33,14 @@ try {
     email,
     email_confirm: true,
   });
+  await admin("/rest/v1/generation_jobs", "POST", {
+    user_id: user.id,
+    status: "failed",
+    brief: {
+      description: "A saved pottery studio business brief.",
+      answers: [{ question: "Style?", answer: "Warm and simple." }],
+    },
+  });
   const link = await admin("/auth/v1/admin/generate_link", "POST", {
     type: "magiclink",
     email,
@@ -60,6 +68,12 @@ try {
   await p
     .getByRole("button", { name: "Create my website", exact: true })
     .click();
+  await p.waitForFunction(
+    () =>
+      document.querySelector("#business")?.value ===
+      "A saved pottery studio business brief.",
+  );
+  console.log("PASS private saved brief is recovered without session storage");
   await p
     .getByPlaceholder("I run a small business called…")
     .fill("I run a pottery studio called Test Clay.");

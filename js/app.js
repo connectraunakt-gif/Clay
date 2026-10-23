@@ -183,6 +183,30 @@ function createWebsite() {
     header("website") +
     `<main id="main" class="question-view creation-view"><p class="eyebrow">LET’S MAKE SOMETHING THAT’S YOURS</p><h1>Tell us about your business.</h1><p>Start with what you do. We’ll take it from there.</p><form id="business-form" class="prompt-box"><label class="sr-only" for="business">Describe your business</label><textarea id="business" maxlength="5000" placeholder="I run a small business called…" required></textarea><div><span>A few words are all it takes.</span><button class="send" aria-label="Start creating">${icon("send")}</button></div></form><div class="recovery-actions">${btn("blank-site", "Start manually", "outline")}${state.description ? btn("resume-generation", "Resume website creation", "text-button") : ""}</div><p class="plan-note">Your account includes one website, with all features.</p></main>`;
   $("#business").value = state.description;
+  const briefOwner = state.user?.id;
+  if (briefOwner && !state.description)
+    (async () => {
+      const recovered = await api.invoke("generation_status", {
+        includeBrief: true,
+      });
+      if (
+        state.user?.id !== briefOwner ||
+        !$("#business") ||
+        $("#business").value.trim() ||
+        !recovered.brief ||
+        recovered.job?.status === "complete"
+      )
+        return;
+      state.description = recovered.brief.description;
+      state.answers = recovered.brief.answers || [];
+      $("#business").value = state.description;
+      saveBrief();
+      if (!$("[data-action=resume-generation]"))
+        $(".recovery-actions").insertAdjacentHTML(
+          "beforeend",
+          btn("resume-generation", "Resume website creation", "text-button"),
+        );
+    })().catch(() => {});
   $("#business-form").onsubmit = async (e) => {
     e.preventDefault();
     state.description = $("#business").value;
@@ -221,7 +245,7 @@ function siteList() {
 function question() {
   const q = state.questions[state.question];
   app.innerHTML =
-    header("home") +
+    header("website") +
     `<main id="main" class="question-view"><p class="eyebrow">A LITTLE MORE ABOUT YOU</p><span class="question-count">${state.question + 1} of ${state.questions.length}</span><h1>${esc(q.question || q)}</h1><form id="answer-form"><label class="sr-only" for="answer">Your answer</label><textarea id="answer" placeholder="Tell us in your own words…" maxlength="3000" required></textarea>${q.options?.length ? `<div class="answer-options">${q.options.map((o) => btn("answer-option", esc(o), "chip", `data-value="${esc(o)}"`)).join("")}</div>` : ""}<div class="question-footer">${state.question ? btn("previous-question", "← Back", "text-button") : "<span>Only the details that matter.</span>"}<button class="primary">${state.question === state.questions.length - 1 ? "Let’s build it" : "Continue"} ${icon("arrow")}</button></div></form></main>`;
   $("#answer").value = state.answers[state.question]?.answer || "";
   $("#answer-form").onsubmit = async (e) => {
@@ -247,7 +271,7 @@ function saveBrief() {
 }
 function generationFailure(message) {
   app.innerHTML =
-    header("home") +
+    header("website") +
     '<main id="main" class="question-view"><p class="eyebrow">YOUR IDEAS ARE SAFE</p><h1>Let’s pick up from here.</h1><p>' +
     esc(message) +
     '</p><div class="recovery-actions">' +
@@ -258,23 +282,50 @@ function generationFailure(message) {
 }
 async function generate(resume = false) {
   saveBrief();
+  const owner = state.user?.id,
+    key = "clay-job-" + owner;
+  let jobId = sessionStorage.getItem(key),
+    pollFailures = 0;
   app.innerHTML =
     header("website") +
-    '<main id="main" class="generation"><span class="progress-line" aria-hidden="true"></span><h1>I’ve got everything I need.<br>Let’s build it.</h1><p>Finding the right words, colours, and a space that feels like you.</p><div class="building-preview"><div></div><div></div><div></div></div><p role="status" id="generation-status">Your website is taking shape. You can return here if you leave.</p>' +
+    '<main id="main" class="generation"><span class="progress-line" aria-hidden="true"></span><h1>I’ve got everything I need.<br>Let’s build it.</h1><p>Finding the right words, colours, and a space that feels like you.</p><div class="building-preview"><div></div><div></div><div></div></div><p role="status" id="generation-status">Designing your pages and writing your content.</p>' +
     btn("home", "Back to Home", "text-button") +
     "</main>";
   try {
-    if (!resume)
-      await api.invoke("generation_start", {
+    if (resume) {
+      const current = await api.invoke("generation_status", { jobId });
+      if (!current.job || current.job.status === "failed") resume = false;
+    }
+    if (!resume) {
+      const started = await api.invoke("generation_start", {
         description: state.description,
         answers: state.answers,
       });
+      jobId = started.job.id;
+      sessionStorage.setItem(key, jobId);
+    }
     for (let i = 0; i < 100; i++) {
-      const r = await api.invoke("generation_status");
+      if (state.user?.id !== owner) return;
+      let r;
+      try {
+        r = await api.invoke("generation_status", { jobId });
+        pollFailures = 0;
+      } catch (error) {
+        if (++pollFailures > 5) throw error;
+        if ($("#generation-status"))
+          $("#generation-status").textContent =
+            "Reconnecting to your website. Your design is still being prepared.";
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        continue;
+      }
       if (r.site) {
         state.sites = [r.site];
-        sessionStorage.removeItem("clay-brief-" + state.user.id);
-        if ($("#generation-status")) openSite(r.site, true);
+        sessionStorage.removeItem("clay-brief-" + owner);
+        sessionStorage.removeItem(key);
+        if ($("#generation-status")) {
+          openSite(r.site, true);
+          if (r.job?.warnings?.length) toast(r.job.warnings[0]);
+        }
         return;
       }
       if (!r.job || r.job.status === "failed")
@@ -282,13 +333,21 @@ async function generate(resume = false) {
           r.job?.message || "Please try creating your website again.",
         );
       if (!$("#generation-status")) return;
+      $("#generation-status").textContent =
+        {
+          designing: "Designing your pages and writing your content.",
+          preparing: "Arranging your website.",
+          photos: "Finding the right photos.",
+          saving: "Saving your website.",
+        }[r.job.stage] || "Your website is taking shape.";
       await new Promise((resolve) => setTimeout(resolve, 2500));
     }
     throw Error(
-      "This is taking longer than expected. Return to Home and resume your website in a moment.",
+      "This is taking longer than expected. Your answers are saved; return here to resume.",
     );
-  } catch (e) {
-    if ($("#generation-status")) generationFailure(errorText(e));
+  } catch (error) {
+    if (state.user?.id === owner && $("#generation-status"))
+      generationFailure(errorText(error));
   }
 }
 async function blankSite() {

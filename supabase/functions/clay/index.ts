@@ -1,11 +1,14 @@
+import { normalizeOperations } from "./actions.js";
+import { createAiClient, AiError } from "./ai.js";
+import {
+  compilePlan,
+  planSchema,
+  requirementsFromBrief,
+  checkRequirements,
+} from "./generation.js";
 import { resolveImages } from "./media.js";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import {
-  validate,
-  applyOperations,
-  exportFiles,
-  prepareGeneratedModel,
-} from "./model.js";
+import { validate, applyOperations, exportFiles } from "./model.js";
 const env = (k: string) => Deno.env.get(k) || "";
 const admin = createClient(
   env("SUPABASE_URL"),
@@ -66,52 +69,69 @@ async function hash(s: string) {
     .join("");
 }
 const schema = `Website model: {name,description,email,phone,address,theme:{background:'#rrggbb',text:'#rrggbb',accent:'#rrggbb',font:'Inter'|'Georgia'|'Arial'|'Trebuchet MS',spacing:'comfortable'|'compact'|'spacious'},navigation:[{pageId,label}],content:[{id,name,description,price}],pages:[{id,title,slug,sections:[{id,type:'hero'|'text'|'services'|'gallery'|'products'|'contact'|'testimonials',layout:'split'|'center'|'grid'|'stack',elements:[{id,type:'heading'|'text'|'image'|'button'|'item',text?,src?,alt?,href?,description?,price?}]}]}]}. Use unique string IDs everywhere; home slug is index. For each image include imageQuery: a concise English photo search phrase, and descriptive alt text. Clay resolves imageQuery into a real licensed photo. Do not invent URLs. Use imagery when appropriate; do not present stock imagery as actual products, staff or premises. Contact sections render a real form automatically. Product sections render content items automatically. Item elements render service cards. Never invent reviews, awards, addresses, statistics, or business claims. Use tasteful contrast (text/background and white/accent at least 4.5:1), meaningful copy, carefully varied layout and section order, no code or HTML. Only include sections relevant to this business. Honor every user exclusion and exact section count. Use at least one heading in each section. Split hero supports imagery. Gallery/grid supports multiple images or items. Use a meaningful CTA and navigation that references existing pages.`;
-async function ai(system: string, input: unknown, maxTokens = 4500) {
-  if (!env("NVIDIA_API_KEY"))
-    throw new Friendly("Clay’s writing service is not connected yet.", 503);
-  const r = await fetch(
-    "https://integrate.api.nvidia.com/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + env("NVIDIA_API_KEY"),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: env("NVIDIA_MODEL") || "openai/gpt-oss-20b",
-        messages: [
-          {
-            role: "system",
-            content: system + " Return only valid JSON, without markdown.",
-          },
-          { role: "user", content: JSON.stringify(input) },
-        ],
-        temperature: 0.4,
-        max_tokens: maxTokens,
-        stream: false,
-        response_format: { type: "json_object" },
-        chat_template_kwargs: { enable_thinking: false },
-      }),
-      signal: AbortSignal.timeout(110000),
-    },
-  );
-  if (!r.ok)
-    throw new Friendly(
-      "Clay’s writing service is busy. Please try again shortly.",
-      503,
-    );
-  const j = await r.json();
-  try {
-    return JSON.parse(
-      j.choices[0].message.content.replace(/^```(?:json)?\s*|\s*```$/g, ""),
-    );
-  } catch {
-    throw new Friendly(
-      "Clay could not finish that idea. Please try once more.",
-      502,
-    );
-  }
+async function ai(
+  system: string,
+  input: unknown,
+  maxTokens = 3200,
+  options: any = {},
+) {
+  const client = createAiClient({
+    apiKey: env("NVIDIA_API_KEY"),
+    model: env("NVIDIA_MODEL") || "nvidia/nemotron-3.5-lightning-30b-a3b",
+    fallbackModel:
+      env("NVIDIA_FALLBACK_MODEL") ||
+      env("NVIDIA_MODEL") ||
+      "nvidia/nemotron-3.5-lightning-30b-a3b",
+    ...options,
+  });
+  return client(system, input, maxTokens);
 }
+async function design(brief: any, onStage: any = async () => {}) {
+  let attempts = 0;
+  const start = Date.now(),
+    options = {
+      onAttempt: async () => onStage("designing", { attempts: ++attempts }),
+    };
+  const requirements = requirementsFromBrief(brief);
+  const prompt =
+    "Design a complete bespoke website for this small business. Respect the description and answers exactly. " +
+    planSchema +
+    " Mandatory constraints: " +
+    JSON.stringify(requirements) +
+    ". Section counts apply to the entire website, not each page. Do not add extra hero sections to exceed the requested count.";
+  const r = await ai(prompt, brief, 3600, options);
+  await onStage("preparing");
+  let model;
+  try {
+    model = checkRequirements(compilePlan(r.plan), requirements);
+  } catch (error) {
+    const remaining = 105000 - (Date.now() - start);
+    if (remaining < 10000)
+      throw new AiError(
+        "invalid_design",
+        "The design needs another attempt. Your answers are saved.",
+      );
+    const corrected = await ai(
+      prompt +
+        " Correct the structural problem in this plan without changing the user's requirements.",
+      {
+        ...brief,
+        plan: r.plan,
+        problem: error instanceof Error ? error.message : "Invalid structure",
+      },
+      3600,
+      { ...options, totalMs: remaining },
+    );
+    model = checkRequirements(compilePlan(corrected.plan), requirements);
+  }
+  await onStage("photos");
+  const warnings: string[] = [];
+  await resolveImages(model, fetch, { strict: false, warnings });
+  validate(model);
+  return { model, warnings };
+}
+const jobFields =
+  "id,status,website_id,message,stage,warnings,attempts,created_at,updated_at";
 async function gh(
   path: string,
   method = "GET",
@@ -447,7 +467,7 @@ Deno.serve(async (req: Request) => {
       const result = await ai(
         "You are Clay, a thoughtful website designer for a nontechnical small-business owner. Ask 2–5 short, personalized questions only about details that materially affect this website. Do not ask facts already supplied or technical questions. Include desired outcome, content/sections to exclude, and visual taste if not specified. Return {questions:[{question,options?:[short suggestions]}]}. If all needed information is supplied return an empty questions list.",
         { description: b.description },
-        800,
+        1600,
       );
       if (!Array.isArray(result.questions) || result.questions.length > 5)
         throw new Friendly(
@@ -456,37 +476,60 @@ Deno.serve(async (req: Request) => {
       return reply(result, origin);
     }
     if (b.type === "generation_status") {
-      const job = await db(
-        admin
-          .from("generation_jobs")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+      let query = admin
+        .from("generation_jobs")
+        .select(jobFields)
+        .eq("user_id", user.id);
+      if (b.jobId) query = query.eq("id", String(b.jobId));
+      let job = await db(
+        query.order("created_at", { ascending: false }).limit(1).maybeSingle(),
       );
       if (
         job?.status === "running" &&
         Date.now() - Date.parse(job.created_at) > 180000
       ) {
-        await db(
+        const updated = await db(
           admin
             .from("generation_jobs")
             .update({
               status: "failed",
+              stage: "failed",
+              error_code: "worker_expired",
               message:
-                "Clay took too long to respond. Please retry; your answers are still here.",
+                "Clay took too long to finish. Your answers are saved; please try again.",
+              updated_at: new Date().toISOString(),
             })
             .eq("id", job.id)
-            .eq("status", "running"),
+            .eq("status", "running")
+            .select(jobFields)
+            .maybeSingle(),
         );
-        job.status = "failed";
-        job.message =
-          "Clay took too long to respond. Please retry; your answers are still here.";
+        if (updated) job = updated;
+        else
+          job = await db(
+            admin
+              .from("generation_jobs")
+              .select(jobFields)
+              .eq("id", job.id)
+              .eq("user_id", user.id)
+              .single(),
+          );
       }
+      const savedBrief =
+        b.includeBrief && job
+          ? await db(
+              admin
+                .from("generation_jobs")
+                .select("brief")
+                .eq("id", job.id)
+                .eq("user_id", user.id)
+                .single(),
+            )
+          : null;
       return reply(
         {
           job,
+          brief: savedBrief?.brief || null,
           site:
             job?.status === "complete" && job.website_id
               ? await owned(job.website_id, user.id)
@@ -517,66 +560,114 @@ Deno.serve(async (req: Request) => {
           "Your account already has a website. Open it from Home.",
           409,
         );
+      await db(
+        admin
+          .from("generation_jobs")
+          .update({
+            status: "failed",
+            stage: "failed",
+            error_code: "worker_expired",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", user.id)
+          .eq("status", "running")
+          .lt("created_at", new Date(Date.now() - 180000).toISOString()),
+      );
       const active = await db(
         admin
           .from("generation_jobs")
-          .select("*")
+          .select(jobFields)
           .eq("user_id", user.id)
           .eq("status", "running")
           .maybeSingle(),
       );
       if (active) return reply({ job: active }, origin);
       await limit("ai:" + user.id, 25, 3600);
-      const job = await db(
-        admin
-          .from("generation_jobs")
-          .insert({ user_id: user.id })
-          .select("*")
-          .single(),
-      );
+      const brief = { description: b.description, answers: b.answers };
+      const created = await admin
+        .from("generation_jobs")
+        .insert({ user_id: user.id, brief, stage: "designing" })
+        .select(jobFields)
+        .single();
+      if (created.error?.code === "23505")
+        return reply(
+          {
+            job: await db(
+              admin
+                .from("generation_jobs")
+                .select(jobFields)
+                .eq("user_id", user.id)
+                .eq("status", "running")
+                .single(),
+            ),
+          },
+          origin,
+        );
+      const job = await db(created);
       const work = async () => {
+        let stage = "designing";
         try {
-          const r = await ai(
-            "Create a complete bespoke website. Return {model: WebsiteModel}. Use concise copy and economical JSON. " +
-              schema,
-            { description: b.description, answers: b.answers },
+          const result = await design(
+            brief,
+            async (next: string, details: any = {}) => {
+              stage = next;
+              await db(
+                admin
+                  .from("generation_jobs")
+                  .update({
+                    stage,
+                    ...details,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", job.id)
+                  .eq("status", "running"),
+              );
+            },
           );
-          await resolveImages(r.model);
-          const model = prepareGeneratedModel(r.model);
-          const current = await db(
-            admin
-              .from("generation_jobs")
-              .select("status")
-              .eq("id", job.id)
-              .single(),
-          );
-          if (current.status !== "running") return;
-          const site = await db(
-            admin
-              .from("websites")
-              .insert({ user_id: user.id, model })
-              .select("id")
-              .single(),
-          );
+          stage = "saving";
           await db(
             admin
               .from("generation_jobs")
-              .update({ status: "complete", website_id: site.id })
-              .eq("id", job.id),
+              .update({
+                stage,
+                warnings: result.warnings,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", job.id)
+              .eq("status", "running"),
           );
-        } catch (e) {
+          await db(
+            admin.rpc("finish_generation", {
+              p_job: job.id,
+              p_model: result.model,
+            }),
+          );
+        } catch (error) {
+          const code =
+            error instanceof AiError
+              ? error.code
+              : stage === "saving"
+                ? "save_failed"
+                : "invalid_design";
           console.error(
             "Generation failed",
-            job.id,
-            e instanceof Error ? e.name : "unknown",
+            JSON.stringify({ job: job.id, stage, code }),
           );
           const message =
-            e instanceof Friendly
-              ? e.message
-              : "Clay couldn’t finish this website. Your answers are saved. Retry, or start with a blank website.";
+            error instanceof AiError
+              ? error.message
+              : stage === "saving"
+                ? "Your design could not be saved. Your answers are still here; please retry."
+                : "The design could not be completed. Your answers are saved; please try again.";
           await admin
             .from("generation_jobs")
-            .update({ status: "failed", message })
+            .update({
+              status: "failed",
+              stage: "failed",
+              error_code: code,
+              message,
+              updated_at: new Date().toISOString(),
+            })
             .eq("id", job.id)
             .eq("status", "running");
         }
@@ -587,26 +678,24 @@ Deno.serve(async (req: Request) => {
     if (b.type === "generate") {
       if (
         typeof b.description !== "string" ||
+        b.description.length < 5 ||
         b.description.length > 5000 ||
         !Array.isArray(b.answers) ||
-        b.answers.length > 5
+        b.answers.length > 5 ||
+        JSON.stringify(b.answers).length > 20000
       )
         throw new Friendly("Please complete your business description.");
-      const r = await ai(
-        "Create a complete, bespoke website based on this business description and answers. Return {model: WebsiteModel}. " +
-          schema,
-        { description: b.description, answers: b.answers },
+      return reply(
+        await design({ description: b.description, answers: b.answers }),
+        origin,
       );
-      await resolveImages(r.model);
-      r.model = prepareGeneratedModel(r.model);
-      return reply(r, origin);
     }
     const site = await owned(b.siteId, user.id);
     if (b.type === "edit") {
       if (typeof b.prompt !== "string" || b.prompt.length > 4000)
         throw new Friendly("Please describe the change you want.");
       const r = await ai(
-        `You edit websites using precise structured operations. Never replace the whole website for a small change. Attach changes to selected element/section when relevant, unless user requests global changes. If vague or potentially destructive ask one brief question with {question:string}. Otherwise return {summary:string,operations:[...]}. Allowed operations: create_page {value:page}; delete_page {target:pageId}; create_section {pageId,index?,value:section}; delete_section {target:sectionId}; update_section {target:sectionId,value:{layout?,background?}}; move_section {target:sectionId,pageId?,index}; move_element {target:elementId,sectionId,index}; edit_text {target:elementId,value:string}; replace_image {target:elementId,value:{imageQuery,alt}}; change_colors {target?:sectionId,value:{background?,text?,accent?}}; change_typography {value:font}; change_spacing {value:spacing}; update_navigation {value:[{pageId,label}]}; create_content {value:{id,name,description,price}}; update_content {target:contentId,value:{name?,description?,price?}}; delete_content {target:contentId}; update_element {target:elementId,value:{text?,href?,description?,price?}}; create_element {target:sectionId,value:element}; delete_element {target:elementId}; update_info {value:{name?,description?,email?,phone?,address?}}; publish_website {} only if explicitly asked to publish. When adding photos to a section without images, use create_element with type image and imageQuery; do not ask the user for a URL. Every operation has a type field. Do not expose any of these technical names to the user. ${schema}`,
+        `You edit websites using precise structured operations. Never replace the whole website for a small change. Attach changes to selected element/section when relevant, unless user requests global changes. If vague or potentially destructive ask one brief question with {question:string}. Otherwise return {summary:string,operations:[...]}. Allowed operations: create_page {value:page}; delete_page {target:pageId}; create_section {pageId,index?,value:section}; delete_section {target:sectionId}; update_section {target:sectionId,value:{layout?,background?}}; move_section {target:sectionId,pageId?,index}; move_element {target:elementId,sectionId,index}; edit_text {target:elementId,value:string}; replace_image {target:elementId,value:{imageQuery,alt}}; change_colors {target?:sectionId,value:{background?,text?,accent?}}; change_typography {value:font}; change_spacing {value:spacing}; update_navigation {value:[{pageId,label}]}; create_content {value:{id,name,description,price}}; update_content {target:contentId,value:{name?,description?,price?}}; delete_content {target:contentId}; update_element {target:elementId,value:{text?,href?,description?,price?}}; create_element {target:sectionId,value:element}; delete_element {target:elementId}; update_info {value:{name?,description?,email?,phone?,address?}}; publish_website {} only if explicitly asked to publish. When adding photos to a section without images, use create_element with type image and imageQuery; do not ask the user for a URL. Clay assigns IDs to newly created pages, sections and elements; you may omit new IDs. Preserve existing IDs and use them as targets. Every operation must have a type field. Example: {"summary":"Updated the heading","operations":[{"type":"edit_text","target":"existing_element_id","value":"Revised heading"}]}. Do not expose any of these technical names to the user. ${schema}`,
         {
           website: site.model,
           pageId: b.pageId,
@@ -617,6 +706,7 @@ Deno.serve(async (req: Request) => {
       );
       if (r.question)
         return reply({ question: String(r.question).slice(0, 1000) }, origin);
+      r.operations = normalizeOperations(r.operations);
       await resolveImages(r.operations);
       applyOperations(
         site.model,
@@ -646,12 +736,12 @@ Deno.serve(async (req: Request) => {
             : e instanceof Error &&
                 (e.name === "TimeoutError" || e.name === "AbortError")
               ? "Clay took too long to respond. Your work is safe. Please try again."
-              : e instanceof Friendly
+              : e instanceof Friendly || e instanceof AiError
                 ? e.message
                 : "Clay could not finish that change. Please try again.",
       },
       origin,
-      e instanceof Friendly ? e.status : 500,
+      e instanceof Friendly ? e.status : e instanceof AiError ? 503 : 500,
     );
   }
 });

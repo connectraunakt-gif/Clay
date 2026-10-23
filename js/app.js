@@ -512,6 +512,7 @@ function selection() {
 window.addEventListener("message", async (e) => {
   if (e.source !== $("#canvas")?.contentWindow || !state.site) return;
   const d = e.data;
+  if (d?.type === "clay-ready") $("#canvas").dataset.ready = "true";
   if (state.preview && d?.type !== "clay-page") return;
   if (d?.type === "clay-select" && locate(state.site.model, d.id)) {
     state.selected = d.id;

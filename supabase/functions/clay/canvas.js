@@ -296,7 +296,10 @@ function installCanvas(preview, initial) {
     );
     if (node) activate(node, true);
   };
-  addEventListener("load", restore, { once: true });
+  requestAnimationFrame(() => {
+    restore();
+    send({ type: "clay-ready" });
+  });
 }
 export const canvasCss = `
 [data-clay-id]{position:relative;cursor:pointer;scroll-margin:60px}
